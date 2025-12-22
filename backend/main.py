@@ -1,44 +1,47 @@
 import sys
 import os
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
-from typing import List, Optional
-from enum import Enum
 import uuid
 import re
 import asyncio
+from enum import Enum
+from typing import List, Optional
+
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 import uvicorn
 
-# ------------------ BASE DIR SETUP ------------------
+# ------------------ BASE DIR ------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(BASE_DIR)  # Ensure imports work for deployment
+sys.path.append(BASE_DIR)  # Ensure imports work in deployment
 
-# Import your local modules
+# ------------------ LOCAL MODULES ------------------
 import video_compile
 import youtube_download
 import database
 import auth
 from config import OPENAI_API_KEY, YOUTUBE_API_KEY
 
-# ------------------ OPENAI CLIENT ------------------
 from openai import OpenAI
 OPENAI_CLIENT = OpenAI(api_key=OPENAI_API_KEY)
 
+import whisper
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+
 # ------------------ FASTAPI APP ------------------
 app = FastAPI()
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # You can restrict origins if needed
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Ensure output folder exists
+# ------------------ DIRS ------------------
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 DATA_DIR = os.path.join(BASE_DIR, "data")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -47,7 +50,6 @@ app.mount("/output", StaticFiles(directory=OUTPUT_DIR), name="output")
 
 # ------------------ TASK STATUS ------------------
 tasks = {}
-
 class TaskStatus(str, Enum):
     PENDING = "pending"
     DOWNLOADING = "downloading"
@@ -89,7 +91,7 @@ class ChatResponse(BaseModel):
     youtube_videos: List[dict] = []
     error_analysis: Optional[str] = None
 
-# ------------------ HELPER FUNCTIONS ------------------
+# ------------------ HELPERS ------------------
 async def get_gpt4o_response(prompt: str) -> str:
     try:
         response = OPENAI_CLIENT.chat.completions.create(
@@ -106,10 +108,6 @@ def parse_segments_from_text(text):
     pattern = r"\[(\d+\.?\d*)\s*-\s*(\d+\.?\d*)\]"
     matches = re.findall(pattern, text)
     return [(float(start), float(end)) for start, end in matches]
-
-# ------------------ YOUTUBE SEARCH ------------------
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
 
 async def search_youtube_videos(query: str, max_results: int = 3) -> List[dict]:
     if not YOUTUBE_API_KEY:
@@ -137,7 +135,6 @@ async def search_youtube_videos(query: str, max_results: int = 3) -> List[dict]:
         print(f"YouTube search error: {e}")
         return []
 
-# ------------------ CHAT RESPONSE ------------------
 async def get_chat_response(message: str, code: Optional[str] = None) -> dict:
     try:
         prompt_parts = [
@@ -192,9 +189,6 @@ async def get_chat_response(message: str, code: Optional[str] = None) -> dict:
             "error_analysis": None
         }
 
-# ------------------ VIDEO PROCESSING ------------------
-import whisper
-
 async def process_video_task(task_id: str, video_url: str, goal: str):
     try:
         tasks[task_id] = {"status": TaskStatus.DOWNLOADING}
@@ -205,7 +199,6 @@ async def process_video_task(task_id: str, video_url: str, goal: str):
         model = whisper.load_model("base")
         result = model.transcribe(actual_video_path, verbose=False)
         segments = result.get("segments", [])
-
         if not segments:
             tasks[task_id] = {"status": TaskStatus.FAILED, "error": "No segments found"}
             return
@@ -216,7 +209,6 @@ async def process_video_task(task_id: str, video_url: str, goal: str):
         tasks[task_id] = {"status": TaskStatus.FILTERING}
         prompt = f"User goal: {goal}\nTranscript:\n{full_script}\nReturn only relevant segments."
         filtered_output = await get_gpt4o_response(prompt)
-
         if not filtered_output:
             tasks[task_id] = {"status": TaskStatus.FAILED, "error": "Filtering failed"}
             return
@@ -236,12 +228,12 @@ async def process_video_task(task_id: str, video_url: str, goal: str):
         tasks[task_id] = {"status": TaskStatus.FAILED, "error": str(e)}
         print(f"Processing error: {e}")
 
-# ------------------ STARTUP EVENT ------------------
+# ------------------ STARTUP ------------------
 @app.on_event("startup")
 async def startup_event():
     database.init_db()
 
-# ------------------ AUTH ROUTES ------------------
+# ------------------ AUTH ------------------
 @app.post("/api/auth/register")
 async def register(user_data: UserRegister):
     try:
@@ -293,7 +285,26 @@ async def chat(request: ChatRequest, current_user: dict = Depends(auth.get_curre
     result = await get_chat_response(request.message, request.code)
     return ChatResponse(**result)
 
+# ------------------ ROOT & FAVICON ------------------
+@app.get("/", response_class=HTMLResponse)
+async def root():
+    return """
+    <html>
+        <head><title>My FYP Backend</title></head>
+        <body>
+            <h1>🎉 Backend is running!</h1>
+            <p>Use /api routes for authentication, video processing, and chat.</p>
+        </body>
+    </html>
+    """
+
+@app.get("/favicon.ico")
+async def favicon():
+    favicon_path = os.path.join(BASE_DIR, "favicon.ico")
+    if os.path.exists(favicon_path):
+        return FileResponse(favicon_path, media_type="image/x-icon")
+    return RedirectResponse("https://raw.githubusercontent.com/favicon.ico")  # fallback
+
 # ------------------ RUN ------------------
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
-
