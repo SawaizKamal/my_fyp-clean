@@ -8,7 +8,6 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import database
 
 # ================= JWT CONFIG =================
-
 SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
     raise RuntimeError("SECRET_KEY environment variable is not set")
@@ -19,7 +18,6 @@ ACCESS_TOKEN_EXPIRE_HOURS = 24
 security = HTTPBearer()
 
 # ================= PASSWORD =================
-
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return bcrypt.checkpw(
         plain_password.encode("utf-8"),
@@ -33,7 +31,6 @@ def get_password_hash(password: str) -> str:
     ).decode("utf-8")
 
 # ================= JWT =================
-
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     expire = datetime.utcnow() + (
@@ -52,23 +49,18 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
     payload = verify_token(credentials.credentials)
-
     if payload is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
         )
-
     user_id = payload.get("user_id")
     user = database.get_user_by_id(user_id)
-
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
-
     return user
 
 # ================= AUTH =================
-
 def register_user(username: str, password: str, email: Optional[str] = None):
     if database.get_user_by_username(username):
         raise ValueError("Username already exists")
