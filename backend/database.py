@@ -1,7 +1,7 @@
 import sqlite3
 import os
 
-# ✅ FIXED BASE DIR (Render-safe)
+# ✅ Render-safe absolute DB path
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "users.db")
 
@@ -54,4 +54,3 @@ def create_user(username: str, email: str, hashed_password: str):
         return cursor.lastrowid
     finally:
         conn.close()
-
