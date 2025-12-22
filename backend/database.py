@@ -1,20 +1,18 @@
 import sqlite3
 import os
-from datetime import datetime
 
-DB_PATH = "users.db"
+# ✅ FIXED BASE DIR (Render-safe)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "users.db")
 
 def get_db():
-    """Get database connection."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
 def init_db():
-    """Initialize database with users table."""
     conn = get_db()
     cursor = conn.cursor()
-    
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -24,13 +22,11 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    
     conn.commit()
     conn.close()
-    print("Database initialized successfully")
+    print("Database initialized successfully at", DB_PATH)
 
 def get_user_by_username(username: str):
-    """Get user by username."""
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
@@ -39,7 +35,6 @@ def get_user_by_username(username: str):
     return dict(user) if user else None
 
 def get_user_by_id(user_id: int):
-    """Get user by ID."""
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
@@ -48,7 +43,6 @@ def get_user_by_id(user_id: int):
     return dict(user) if user else None
 
 def create_user(username: str, email: str, hashed_password: str):
-    """Create a new user."""
     conn = get_db()
     cursor = conn.cursor()
     try:
@@ -57,9 +51,7 @@ def create_user(username: str, email: str, hashed_password: str):
             (username, email, hashed_password)
         )
         conn.commit()
-        user_id = cursor.lastrowid
+        return cursor.lastrowid
+    finally:
         conn.close()
-        return user_id
-    except sqlite3.IntegrityError as e:
-        conn.close()
-        raise ValueError("Username or email already exists")
+
