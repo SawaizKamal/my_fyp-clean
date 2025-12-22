@@ -15,7 +15,7 @@ import uvicorn
 
 # ------------------ BASE DIR ------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(BASE_DIR)
+sys.path.append(BASE_DIR)  # Ensure imports work in deployment
 
 # ------------------ LOCAL MODULES ------------------
 import video_compile
@@ -44,12 +44,19 @@ app.add_middleware(
 # ------------------ DIRS ------------------
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 DATA_DIR = os.path.join(BASE_DIR, "data")
-DIST_DIR = os.path.join(BASE_DIR, "dist_build")  # frontend build folder
+DIST_BUILD_DIR = os.path.join(BASE_DIR, "dist_build")  # frontend build folder
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
 
-# Mount output for videos
+# Mount backend static files
 app.mount("/output", StaticFiles(directory=OUTPUT_DIR), name="output")
+
+# Mount frontend assets
+assets_path = os.path.join(DIST_BUILD_DIR, "assets")
+if os.path.exists(assets_path):
+    app.mount("/static", StaticFiles(directory=assets_path), name="static")
+else:
+    print("Warning: Frontend assets folder not found!")
 
 # ------------------ TASK STATUS ------------------
 tasks = {}
@@ -192,7 +199,6 @@ async def get_chat_response(message: str, code: Optional[str] = None) -> dict:
             "error_analysis": None
         }
 
-# ------------------ VIDEO PROCESSING ------------------
 async def process_video_task(task_id: str, video_url: str, goal: str):
     try:
         tasks[task_id] = {"status": TaskStatus.DOWNLOADING}
@@ -289,18 +295,10 @@ async def chat(request: ChatRequest, current_user: dict = Depends(auth.get_curre
     result = await get_chat_response(request.message, request.code)
     return ChatResponse(**result)
 
-# ------------------ FRONTEND INTEGRATION ------------------
-# Mount static assets
-assets_path = os.path.join(DIST_DIR, "assets")
-if os.path.exists(assets_path):
-    app.mount("/static", StaticFiles(directory=assets_path), name="static")
-else:
-    print("Warning: Frontend assets folder not found!")
-
-# Serve index.html on root
+# ------------------ ROOT & FAVICON ------------------
 @app.get("/", response_class=HTMLResponse)
-async def serve_frontend():
-    index_path = os.path.join(DIST_DIR, "index.html")
+async def root():
+    index_path = os.path.join(DIST_BUILD_DIR, "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)
     return HTMLResponse("""
@@ -323,4 +321,5 @@ async def favicon():
 # ------------------ RUN ------------------
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+
 
