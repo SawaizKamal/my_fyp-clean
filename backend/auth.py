@@ -1,29 +1,46 @@
 from datetime import datetime, timedelta
 from typing import Optional
-import os
+from jose import JWTError, jwt
 import bcrypt
-from jose import jwt, JWTError
+import os
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import database
 
-# ✅ ENV BASED SECRET (Render safe)
-SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key")
+# ================= JWT CONFIG =================
+
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("SECRET_KEY environment variable is not set")
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 
 security = HTTPBearer()
 
+# ================= PASSWORD =================
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return bcrypt.checkpw(
+        plain_password.encode("utf-8"),
+        hashed_password.encode("utf-8")
+    )
+
 def get_password_hash(password: str) -> str:
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    return bcrypt.hashpw(
+        password.encode("utf-8"),
+        bcrypt.gensalt()
+    ).decode("utf-8")
 
-def verify_password(password: str, hashed: str) -> bool:
-    return bcrypt.checkpw(password.encode(), hashed.encode())
+# ================= JWT =================
 
-def create_access_token(data: dict):
-    expire = datetime.utcnow() + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
-    data.update({"exp": expire})
-    return jwt.encode(data, SECRET_KEY, algorithm=ALGORITHM)
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + (
+        expires_delta or timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
+    )
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 def verify_token(token: str):
     try:
@@ -34,11 +51,13 @@ def verify_token(token: str):
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
-    token = credentials.credentials
-    payload = verify_token(token)
+    payload = verify_token(credentials.credentials)
 
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
 
     user_id = payload.get("user_id")
     user = database.get_user_by_id(user_id)
@@ -47,6 +66,8 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail="User not found")
 
     return user
+
+# ================= AUTH =================
 
 def register_user(username: str, password: str, email: Optional[str] = None):
     if database.get_user_by_username(username):
@@ -63,14 +84,20 @@ def register_user(username: str, password: str, email: Optional[str] = None):
     return {
         "access_token": token,
         "token_type": "bearer",
-        "user": {"id": user_id, "username": username, "email": email}
+        "user": {
+            "id": user_id,
+            "username": username,
+            "email": email
+        }
     }
 
 def authenticate_user(username: str, password: str):
     user = database.get_user_by_username(username)
+    if not user:
+        raise ValueError("Invalid credentials")
 
-    if not user or not verify_password(password, user["hashed_password"]):
-        raise ValueError("Invalid username or password")
+    if not verify_password(password, user["hashed_password"]):
+        raise ValueError("Invalid credentials")
 
     token = create_access_token({
         "user_id": user["id"],
@@ -86,4 +113,3 @@ def authenticate_user(username: str, password: str):
             "email": user["email"]
         }
     }
-
