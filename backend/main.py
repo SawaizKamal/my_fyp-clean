@@ -12,7 +12,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(BASE_DIR)
 
 # ---------------- LOCAL MODULES ----------------
-import video_compile, youtube_download, database, auth
+import video_compile, youtube_download
+import auth  # testing hardcoded auth
 from config import OPENAI_API_KEY, YOUTUBE_API_KEY
 from openai import OpenAI
 OPENAI_CLIENT = OpenAI(api_key=OPENAI_API_KEY)
@@ -139,11 +140,6 @@ async def process_video_task(task_id, url, goal):
         tasks[task_id] = {"status": TaskStatus.FAILED, "error": str(e)}
         print("PROCESS ERROR:", e)
 
-# ---------------- STARTUP ----------------
-@app.on_event("startup")
-async def startup():
-    database.init_db()
-
 # ---------------- AUTH ROUTES ----------------
 @app.post("/api/auth/register")
 async def register(user: UserRegister):
@@ -205,3 +201,4 @@ async def favicon():
 # ---------------- RUN ----------------
 if __name__ == "__main__":
     uvicorn.run("backend.main:app", host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+
