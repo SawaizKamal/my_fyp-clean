@@ -3,9 +3,11 @@ import axios from 'axios';
 // Simplification: Always use /api.
 // In Development: Vite Proxy forwards this to http://localhost:8000
 // In Production: It serves relative to the domain (same origin)
+// VERSION 2025-12-23-FIX-01
 const API_BASE_URL = '/api';
 
-console.log('DEBUG: Auth Config Loaded. Using API_BASE_URL:', API_BASE_URL);
+console.log('DEBUG: Auth Config Loaded. VERSION: 2025-12-23-FIX-01');
+console.log('DEBUG: Using API_BASE_URL:', API_BASE_URL);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
