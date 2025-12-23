@@ -159,11 +159,21 @@ async def process_video_task(task_id, url, goal):
 # ---------------- AUTH ROUTES ----------------
 @app.post("/api/auth/register")
 async def register(user: UserRegister):
-    return auth.register_user(user.username, user.password, user.email)
+    print(f"DEBUG: Registering user {user.username}, email: {user.email}")
+    try:
+        return auth.register_user(user.username, user.password, user.email)
+    except Exception as e:
+        print(f"DEBUG: Register failed: {e}")
+        raise e
 
 @app.post("/api/auth/login")
 async def login(user: UserLogin):
-    return auth.authenticate_user(user.username, user.password)
+    print(f"DEBUG: Login attempt for {user.username}")
+    try:
+        return auth.authenticate_user(user.username, user.password)
+    except Exception as e:
+        print(f"DEBUG: Login failed: {e}")
+        raise e
 
 @app.get("/api/auth/me")
 async def me(user=Depends(auth.get_current_user)):
