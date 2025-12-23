@@ -1,16 +1,11 @@
 import axios from 'axios';
 
-const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-const API_BASE_URL = isLocalhost ? 'http://localhost:8000/api' : '/api';
+// Simplification: Always use /api.
+// In Development: Vite Proxy forwards this to http://localhost:8000
+// In Production: It serves relative to the domain (same origin)
+const API_BASE_URL = '/api';
 
-console.log('DEBUG: Auth Config Loaded');
-console.log('DEBUG: Hostname:', window.location.hostname);
-console.log('DEBUG: API_BASE_URL:', API_BASE_URL);
-
-// Temporary alert to ensure user sees this update
-if (!isLocalhost) {
-  // alert(`Debug: Connecting to API at ${API_BASE_URL} (Hostname: ${window.location.hostname})`);
-}
+console.log('DEBUG: Auth Config Loaded. Using API_BASE_URL:', API_BASE_URL);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
