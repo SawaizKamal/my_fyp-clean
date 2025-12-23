@@ -1,9 +1,7 @@
 services:
   - type: native
     name: fullstack-app
-    buildCommand: |
-      cd frontend && npm install && npm run build
-      cd ../backend && pip install -r requirements.txt && mkdir -p dist_build && cp -r ../frontend/dist/* dist_build/
+    buildCommand: chmod +x build.sh && ./build.sh
     startCommand: cd backend && python -m uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
