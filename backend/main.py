@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+import database
 import uvicorn
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -13,7 +14,7 @@ sys.path.append(BASE_DIR)
 
 # ---------------- LOCAL MODULES ----------------
 import video_compile, youtube_download
-import auth  # testing hardcoded auth
+import auth
 from config import OPENAI_API_KEY, YOUTUBE_API_KEY
 from openai import OpenAI
 OPENAI_CLIENT = OpenAI(api_key=OPENAI_API_KEY)
@@ -22,6 +23,9 @@ import whisper
 from googleapiclient.discovery import build
 
 # ---------------- APP ----------------
+# Initialize DB
+database.init_db()
+
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,

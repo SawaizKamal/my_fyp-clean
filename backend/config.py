@@ -15,3 +15,6 @@ YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")
 # Server configuration
 HOST = "0.0.0.0"
 PORT = 8000
+
+# Auth configuration
+SECRET_KEY = os.getenv("SECRET_KEY", "CHANGE_ME_IN_PRODUCTION_SECRET_KEY")

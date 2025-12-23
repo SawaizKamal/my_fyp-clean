@@ -1,0 +1,24 @@
+services:
+  - type: native
+    name: fullstack-app
+    buildCommand: |
+      cd frontend && npm install && npm run build
+      cd ../backend && pip install -r requirements.txt && mkdir -p dist_build && cp -r ../frontend/dist/* dist_build/
+    startCommand: cd backend && python -m uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.0
+      - key: NODE_VERSION
+        value: 20.0.0
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: fullstack-db
+          property: connectionString
+
+databases:
+  - name: fullstack-db
+    plan: free
+    databaseName: my_fyp
+    user: my_fyp_user
