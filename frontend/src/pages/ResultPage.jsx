@@ -100,14 +100,14 @@ function ResultPage() {
               <video
                 controls
                 className="w-full rounded-lg mb-6"
-                src={`http://localhost:8000/api/video/${taskId}`}
+                src={`/api/video/${taskId}`}
               >
                 Your browser does not support the video tag.
               </video>
 
               <div className="flex gap-4">
                 <a
-                  href={`http://localhost:8000/api/video/${taskId}`}
+                  href={`/api/video/${taskId}`}
                   download
                   className="flex-1 py-3 px-6 bg-green-600 hover:bg-green-700 rounded-lg text-center font-semibold transition duration-200"
                 >
