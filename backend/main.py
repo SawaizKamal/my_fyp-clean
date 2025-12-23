@@ -216,9 +216,12 @@ async def chat(req: ChatRequest, user=Depends(auth.get_current_user)):
 
 # ---------------- FRONTEND ----------------
 if os.path.exists(DIST_DIR):
+    print(f"✅ dist_build found at {DIST_DIR}")
+    print("Files:", os.listdir(DIST_DIR))
     app.mount("/", StaticFiles(directory=DIST_DIR, html=True), name="frontend")
 else:
-    print("⚠️ dist_build not found")
+    print(f"⚠️ dist_build not found at {DIST_DIR}")
+    print("Contents of backend:", os.listdir(BASE_DIR))
 
 @app.get("/favicon.ico")
 async def favicon():
