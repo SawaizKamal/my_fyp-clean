@@ -28,6 +28,17 @@ from googleapiclient.discovery import build
 database.init_db()
 
 app = FastAPI()
+
+@app.get("/api/health")
+def health():
+    try:
+        # Check DB connection
+        with database.engine.connect() as conn:
+            conn.execute(database.text("SELECT 1"))
+        return {"status": "ok", "database": "connected", "model": "gpt-4o"}
+    except Exception as e:
+        return {"status": "error", "database": str(e)}
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
