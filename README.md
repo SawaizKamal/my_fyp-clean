@@ -142,6 +142,22 @@ VideoShortener/
 - YouTube API has quota limits - check your usage
 - OpenAI API usage will incur costs
 
+## Deployment on Render
+
+1.  **Environment Variables**:
+    You MUST set the following environment variables in your Render Service settings:
+    -   `OPENAI_API_KEY`: Your OpenAI API Key (Required).
+    -   `YOUTUBE_API_KEY`: Your YouTube Data API Key (Required).
+    -   `SECRET_KEY`: A random string for security (e.g., generated via `openssl rand -hex 32`).
+
+2.  **Database**:
+    -   Render will automatically provision a PostgreSQL database if you use the Blueprint.
+    -   If deploying manually, ensure `DATABASE_URL` is set to the internal connection string of your Render Postgres instance.
+
+3.  **Build & Start Commands** (handled automatically by `render.yaml`):
+    -   Build: `cd frontend && npm install && npm run build && cd ../backend && pip install -r requirements.txt && mkdir -p dist_build && cp -r ../frontend/dist/* dist_build/`
+    -   Start: `cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT`
+
 ## License
 
 MIT License
