@@ -115,19 +115,49 @@ function ChatPage() {
 
           {response && (
             <div className="space-y-6">
-              {/* Explanation */}
-              <div className="bg-gray-800 rounded-xl p-6">
-                <h2 className="text-xl font-bold text-purple-400 mb-4">Explanation</h2>
-                <div className="prose prose-invert max-w-none">
-                  <p className="text-gray-300 whitespace-pre-wrap">{response.explanation}</p>
+              {/* Pattern Badge */}
+              <div className="flex items-center gap-4">
+                <div className="bg-purple-600 px-4 py-2 rounded-lg">
+                  <span className="font-bold">🧠 {response.pattern_name}</span>
+                </div>
+                <div className="bg-gray-800 px-4 py-2 rounded-lg">
+                  <span className="text-sm">Confidence: {response.confidence_score}%</span>
                 </div>
               </div>
 
-              {/* Error Analysis */}
-              {response.error_analysis && (
-                <div className="bg-yellow-500 bg-opacity-10 border border-yellow-500 rounded-xl p-6">
-                  <h2 className="text-xl font-bold text-yellow-400 mb-4">Error Analysis</h2>
-                  <p className="text-gray-300 whitespace-pre-wrap">{response.error_analysis}</p>
+              {/* Learning Intent */}
+              <div className="bg-blue-500 bg-opacity-10 border border-blue-500 rounded-xl p-4">
+                <p className="text-blue-300">
+                  <strong>🎯 Learning Goal:</strong> {response.learning_intent}
+                </p>
+              </div>
+
+              {/* Pattern Explanation */}
+              <div className="bg-gray-800 rounded-xl p-6">
+                <h2 className="text-xl font-bold text-purple-400 mb-4">💡 Why This Pattern Fails</h2>
+                <div className="prose prose-invert max-w-none">
+                  <p className="text-gray-300 whitespace-pre-wrap">{response.pattern_explanation}</p>
+                </div>
+              </div>
+
+              {/* Debugging Insights */}
+              {response.debugging_insight && (
+                <div className="bg-red-500 bg-opacity-10 border border-red-500 rounded-xl p-6">
+                  <h2 className="text-xl font-bold text-red-400 mb-4">🐛 Debugging Insights</h2>
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="font-semibold text-red-300 mb-2">🔍 Root Cause:</h3>
+                      <p className="text-gray-300">{response.debugging_insight.root_cause}</p>
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-yellow-300 mb-2">❌ Faulty Assumption:</h3>
+                      <p className="text-gray-300">{response.debugging_insight.faulty_assumption}</p>
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-green-300 mb-2">✅ Correct Flow:</h3>
+                      <p className="text-gray-300 whitespace-pre-wrap">{response.debugging_insight.correct_flow}</p>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -149,20 +179,55 @@ function ChatPage() {
                 </div>
               )}
 
-              {/* Links */}
-              {response.links && response.links.length > 0 && (
+              {/* GitHub Repositories */}
+              {response.github_repos && response.github_repos.length > 0 && (
                 <div className="bg-gray-800 rounded-xl p-6">
-                  <h2 className="text-xl font-bold text-purple-400 mb-4">Helpful Links</h2>
-                  <ul className="space-y-2">
-                    {response.links.map((link, index) => (
+                  <h2 className="text-xl font-bold text-purple-400 mb-4">🔗 GitHub Repositories</h2>
+                  <div className="space-y-3">
+                    {response.github_repos.map((repo, index) => (
+                      <a
+                        key={index}
+                        href={repo.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block bg-gray-900 p-4 rounded-lg hover:bg-gray-700 transition"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="font-semibold text-white">{repo.name}</h3>
+                            <p className="text-sm text-gray-400 mt-1">{repo.description}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-yellow-400">⭐ {repo.stars}</p>
+                            <p className="text-xs text-gray-500">{repo.language}</p>
+                          </div>
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* StackOverflow Threads */}
+              {response.stackoverflow_links && response.stackoverflow_links.length > 0 && (
+                <div className="bg-gray-800 rounded-xl p-6">
+                  <h2 className="text-xl font-bold text-purple-400 mb-4">💬 StackOverflow Discussions</h2>
+                  <ul className="space-y-3">
+                    {response.stackoverflow_links.map((thread, index) => (
                       <li key={index}>
                         <a
-                          href={link}
+                          href={thread.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-purple-400 hover:text-purple-300 underline break-all"
+                          className="block bg-gray-900 p-3 rounded-lg hover:bg-gray-700 transition"
                         >
-                          {link}
+                          <div className="flex items-center justify-between">
+                            <span className="text-purple-400 hover:text-purple-300">{thread.title}</span>
+                            <div className="flex gap-3 text-sm text-gray-400">
+                              <span>⬆ {thread.score}</span>
+                              <span>💬 {thread.answer_count}</span>
+                            </div>
+                          </div>
                         </a>
                       </li>
                     ))}
@@ -170,12 +235,34 @@ function ChatPage() {
                 </div>
               )}
 
-              {/* YouTube Videos */}
-              {response.youtube_videos && response.youtube_videos.length > 0 && (
+              {/* Dev.to Articles */}
+              {response.dev_articles && response.dev_articles.length > 0 && (
                 <div className="bg-gray-800 rounded-xl p-6">
-                  <h2 className="text-xl font-bold text-purple-400 mb-4">Recommended Videos</h2>
+                  <h2 className="text-xl font-bold text-purple-400 mb-4">📝 Dev Articles</h2>
+                  <ul className="space-y-2">
+                    {response.dev_articles.map((article, index) => (
+                      <li key={index}>
+                        <a
+                          href={article.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block bg-gray-900 p-3 rounded-lg hover:bg-gray-700 transition"
+                        >
+                          <h3 className="text-purple-400 hover:text-purple-300">{article.title}</h3>
+                          <p className="text-xs text-gray-500 mt-1">by {article.author}</p>
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Video Segments with Timestamps */}
+              {response.video_segments && response.video_segments.length > 0 && (
+                <div className="bg-gray-800 rounded-xl p-6">
+                  <h2 className="text-xl font-bold text-purple-400 mb-4">🎥 Pattern-Specific Video Segments</h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {response.youtube_videos.map((video, index) => (
+                    {response.video_segments.map((video, index) => (
                       <a
                         key={index}
                         href={video.url}
@@ -195,6 +282,23 @@ function ChatPage() {
                             {video.title}
                           </h3>
                           <p className="text-sm text-gray-400">{video.channel}</p>
+                          {video.relevance_note && (
+                            <p className="text-xs text-purple-400 mt-2">🎯 {video.relevance_note}</p>
+                          )}
+                          {(video.start_time || video.end_time) && (
+                            <div className="mt-2 flex gap-2">
+                              {video.start_time && (
+                                <span className="bg-purple-600 text-xs px-2 py-1 rounded">
+                                  {video.start_time}
+                                </span>
+                              )}
+                              {video.end_time && (
+                                <span className="bg-purple-600 text-xs px-2 py-1 rounded">
+                                  {video.end_time}
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </a>
                     ))}

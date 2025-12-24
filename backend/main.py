@@ -1,6 +1,6 @@
 import sys, os, uuid, re
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Dict
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
@@ -17,6 +17,9 @@ import database
 import video_compile, youtube_download
 import auth
 from config import OPENAI_API_KEY, YOUTUBE_API_KEY
+import pattern_detector
+import knowledge_search
+import debug_analyzer
 from openai import OpenAI
 OPENAI_CLIENT = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -85,12 +88,41 @@ class ChatRequest(BaseModel):
     message: str
     code: Optional[str] = None
 
+class VideoSegment(BaseModel):
+    title: str
+    url: str
+    thumbnail: Optional[str] = None
+    channel: Optional[str] = None
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    relevance_note: Optional[str] = None
+
 class ChatResponse(BaseModel):
+    # Pattern Intelligence Fields
+    pattern_name: str
+    pattern_explanation: str
+    confidence_score: float
+    learning_intent: str
+    
+    # Solutions
     explanation: str
     corrected_code: Optional[str]
-    links: List[str]
-    youtube_videos: List[dict]
-    error_analysis: Optional[str]
+    
+    # External Knowledge
+    github_repos: List[dict]
+    stackoverflow_links: List[dict]
+    dev_articles: List[dict]
+    
+    # Video Segments (with timestamps)
+    video_segments: List[VideoSegment]
+    
+    # Debugging Insights
+    debugging_insight: Dict[str, str]
+    
+    # Legacy fields for backward compatibility
+    links: List[str] = []
+    youtube_videos: List[dict] = []
+    error_analysis: Optional[str] = None
 
 # ---------------- HELPERS ----------------
 async def get_gpt4o_response(prompt: str):
@@ -204,14 +236,116 @@ async def video(task_id: str, user=Depends(auth.get_current_user)):
 # ---------------- CHAT ----------------
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest, user=Depends(auth.get_current_user)):
-    text = await get_gpt4o_response(req.message)
-    videos = await search_youtube(req.message)
+    """
+    Pattern Intelligence Layer - Chat endpoint
+    Detects problem patterns and provides targeted solutions
+    """
+    print(f"\n{'='*50}")
+    print(f"🧠 PATTERN INTELLIGENCE SYSTEM")
+    print(f"{'='*50}")
+    print(f"User: {user.get('username', 'unknown')}")
+    print(f"Message: {req.message[:100]}...")
+    
+    # Step 1: Pattern Detection
+    print("\n[1/6] 🔍 Detecting pattern...")
+    pattern_key, confidence = pattern_detector.detect_pattern(
+        code=req.code,
+        error_message=req.message,
+        user_message=req.message
+    )
+    pattern_info = pattern_detector.PATTERN_LIBRARY.get(pattern_key, {})
+    pattern_name = pattern_info.get("name", "Unknown Pattern")
+    learning_intent = pattern_detector.get_learning_intent(pattern_key)
+    
+    print(f"   ✓ Pattern: {pattern_name} (confidence: {confidence}%)")
+    
+    # Step 2: Pattern Explanation
+    print("[2/6] 📝 Generating pattern explanation...")
+    pattern_explanation = pattern_detector.generate_pattern_explanation(
+        pattern_key=pattern_key,
+        code=req.code,
+        error=req.message
+    )
+    print(f"   ✓ Explanation generated")
+    
+    # Step 3: Generate Solution
+    print("[3/6] 💡 Generating pattern-based solution...")
+    corrected_code = None
+    if req.code:
+        corrected_code = pattern_detector.get_pattern_solution(
+            pattern_key=pattern_key,
+            code=req.code
+        )
+    print(f"   ✓ Solution generated")
+    
+    # Step 4: External Knowledge Search
+    print("[4/6] 🌐 Searching external knowledge...")
+    search_query = pattern_detector.map_pattern_to_search_query(pattern_key)
+    external_knowledge = knowledge_search.get_external_knowledge(search_query)
+    print(f"   ✓ Found {len(external_knowledge['github_repos'])} repos, "
+          f"{len(external_knowledge['stackoverflow_threads'])} SO threads, "
+          f"{len(external_knowledge['dev_articles'])} articles")
+    
+    # Step 5: Video Segment Search with Timestamps
+    print("[5/6] 🎥 Finding pattern-specific video segments...")
+    video_query = f"{pattern_name} tutorial solution"
+    raw_videos = await search_youtube(video_query)
+    
+    # Convert to VideoSegment format with timestamp placeholders
+    video_segments = []
+    for vid in raw_videos[:3]:  # Limit to top 3
+        video_segments.append(VideoSegment(
+            title=vid.get("title", ""),
+            url=vid.get("url", ""),
+            thumbnail=vid.get("thumbnail"),
+            channel=vid.get("channel"),
+            start_time=None,  # Would need transcript analysis for exact timestamps
+            end_time=None,
+            relevance_note=f"Covers {pattern_name}"
+        ))
+    print(f"   ✓ Found {len(video_segments)} relevant video segments")
+    
+    # Step 6: Debugging Insights
+    print("[6/6] 🐛 Generating debugging insights...")
+    debugging_insight = debug_analyzer.generate_debug_insight(
+        pattern_name=pattern_name,
+        code=req.code,
+        error_message=req.message,
+        user_message=req.message
+    )
+    print(f"   ✓ Debugging insight generated")
+    
+    # Assemble comprehensive response
+    print(f"\n{'='*50}")
+    print(f"✅ PATTERN INTELLIGENCE RESPONSE READY")
+    print(f"{'='*50}\n")
+    
     return ChatResponse(
-        explanation=text or "Error",
-        corrected_code=None,
+        # Pattern Intelligence
+        pattern_name=pattern_name,
+        pattern_explanation=pattern_explanation,
+        confidence_score=confidence,
+        learning_intent=learning_intent,
+        
+        # Solutions
+        explanation=f"**Pattern Detected:** {pattern_name}\n\n{pattern_explanation}",
+        corrected_code=corrected_code,
+        
+        # External Knowledge
+        github_repos=external_knowledge["github_repos"],
+        stackoverflow_links=external_knowledge["stackoverflow_threads"],
+        dev_articles=external_knowledge["dev_articles"],
+        
+        # Video Segments
+        video_segments=video_segments,
+        
+        # Debugging Insights
+        debugging_insight=debugging_insight,
+        
+        # Legacy fields (for backward compatibility)
         links=[],
-        youtube_videos=videos,
-        error_analysis=None
+        youtube_videos=raw_videos,
+        error_analysis=debugging_insight.get("root_cause", None)
     )
 
 # ---------------- FRONTEND ----------------
