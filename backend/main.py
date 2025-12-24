@@ -20,6 +20,7 @@ from config import OPENAI_API_KEY, YOUTUBE_API_KEY
 import pattern_detector
 import knowledge_search
 import debug_analyzer
+import video_transcript_analyzer
 from openai import OpenAI
 OPENAI_CLIENT = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -98,8 +99,15 @@ class VideoSegment(BaseModel):
     relevance_note: Optional[str] = None
 
 class ChatResponse(BaseModel):
+    # PRIMARY Pattern (ALWAYS FIRST - Rule Enforced)
+    primary_pattern: str
+    primary_pattern_explanation: str
+    
+    # Secondary Issues (syntax, types, etc.)
+    secondary_issues: List[str]
+    
     # Pattern Intelligence Fields
-    pattern_name: str
+    pattern_name: str  # Legacy - same as primary_pattern
     pattern_explanation: str
     confidence_score: float
     learning_intent: str
@@ -115,6 +123,7 @@ class ChatResponse(BaseModel):
     
     # Video Segments (with timestamps)
     video_segments: List[VideoSegment]
+    video_skip_reasons: List[str]  # Transparency for skipped videos
     
     # Debugging Insights
     debugging_insight: Dict[str, str]
@@ -233,102 +242,141 @@ async def video(task_id: str, user=Depends(auth.get_current_user)):
         raise HTTPException(400, "Not ready")
     return FileResponse(task["output_path"], media_type="video/mp4")
 
+
+
 # ---------------- CHAT ----------------
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest, user=Depends(auth.get_current_user)):
     """
-    Pattern Intelligence Layer - Chat endpoint
-    Detects problem patterns and provides targeted solutions
+    ENHANCED Pattern Intelligence Layer - Chat endpoint
+    PRIMARY PATTERN FIRST - MANDATORY RULE ENFORCEMENT
     """
-    print(f"\n{'='*50}")
-    print(f"🧠 PATTERN INTELLIGENCE SYSTEM")
-    print(f"{'='*50}")
+    print(f"\n{'='*60}")
+    print(f"🧠 ENHANCED PATTERN INTELLIGENCE SYSTEM")
+    print(f"{'='*60}")
     print(f"User: {user.get('username', 'unknown')}")
     print(f"Message: {req.message[:100]}...")
     
-    # Step 1: Pattern Detection
-    print("\n[1/6] 🔍 Detecting pattern...")
-    pattern_key, confidence = pattern_detector.detect_pattern(
+    # Step 1: PRIMARY/SECONDARY Pattern Detection (RULE ENFORCED)
+    print("\n[1/7] 🔍 Detecting PRIMARY + SECONDARY patterns...")
+    pattern_result = pattern_detector.detect_primary_and_secondary_patterns(
         code=req.code,
         error_message=req.message,
         user_message=req.message
     )
-    pattern_info = pattern_detector.PATTERN_LIBRARY.get(pattern_key, {})
-    pattern_name = pattern_info.get("name", "Unknown Pattern")
-    learning_intent = pattern_detector.get_learning_intent(pattern_key)
     
-    print(f"   ✓ Pattern: {pattern_name} (confidence: {confidence}%)")
+    primary_pattern_key = pattern_result["primary_pattern"]
+    primary_pattern_name = pattern_result["primary_pattern_name"]
+    secondary_issues = pattern_result["secondary_issues"]
+    confidence = pattern_result["confidence"]
+    learning_intent = pattern_detector.get_learning_intent(primary_pattern_key)
+    
+    print(f"   ✓ PRIMARY: {primary_pattern_name} (confidence: {confidence}%)")
+    print(f"   ✓ SECONDARY: {secondary_issues if secondary_issues else 'None'}")
     
     # Step 2: Pattern Explanation
-    print("[2/6] 📝 Generating pattern explanation...")
+    print("[2/7] 📝 Generating pattern explanation...")
     pattern_explanation = pattern_detector.generate_pattern_explanation(
-        pattern_key=pattern_key,
+        pattern_key=primary_pattern_key,
         code=req.code,
         error=req.message
     )
     print(f"   ✓ Explanation generated")
     
     # Step 3: Generate Solution
-    print("[3/6] 💡 Generating pattern-based solution...")
+    print("[3/7] 💡 Generating pattern-based solution...")
     corrected_code = None
     if req.code:
         corrected_code = pattern_detector.get_pattern_solution(
-            pattern_key=pattern_key,
+            pattern_key=primary_pattern_key,
             code=req.code
         )
     print(f"   ✓ Solution generated")
     
     # Step 4: External Knowledge Search
-    print("[4/6] 🌐 Searching external knowledge...")
-    search_query = pattern_detector.map_pattern_to_search_query(pattern_key)
+    print("[4/7] 🌐 Searching external knowledge...")
+    search_query = pattern_detector.map_pattern_to_search_query(primary_pattern_key)
     external_knowledge = knowledge_search.get_external_knowledge(search_query)
     print(f"   ✓ Found {len(external_knowledge['github_repos'])} repos, "
           f"{len(external_knowledge['stackoverflow_threads'])} SO threads, "
           f"{len(external_knowledge['dev_articles'])} articles")
     
-    # Step 5: Video Segment Search with Timestamps
-    print("[5/6] 🎥 Finding pattern-specific video segments...")
-    video_query = f"{pattern_name} tutorial solution"
+    # Step 5: Video Search with TRANSCRIPT-BASED TIMESTAMP EXTRACTION
+    print("[5/7] 🎥 Finding pattern-specific video segments with TRANSCRIPT ANALYSIS...")
+    video_query = f"{primary_pattern_name} tutorial solution"
     raw_videos = await search_youtube(video_query)
     
-    # Convert to VideoSegment format with timestamp placeholders
     video_segments = []
+    video_skip_reasons = []
+    pattern_keywords = pattern_detector.get_pattern_keywords(primary_pattern_key)
+    
     for vid in raw_videos[:3]:  # Limit to top 3
-        video_segments.append(VideoSegment(
-            title=vid.get("title", ""),
-            url=vid.get("url", ""),
-            thumbnail=vid.get("thumbnail"),
-            channel=vid.get("channel"),
-            start_time=None,  # Would need transcript analysis for exact timestamps
-            end_time=None,
-            relevance_note=f"Covers {pattern_name}"
-        ))
-    print(f"   ✓ Found {len(video_segments)} relevant video segments")
+        video_url = vid.get("url", "")
+        
+        # Check if transcript/audio available (MANDATORY RULE)
+        has_transcript, skip_reason = video_transcript_analyzer.check_audio_availability(video_url)
+        
+        if not has_transcript:
+            # SKIP video and record reason (TRANSPARENCY)
+            video_skip_reasons.append(f"{vid.get('title', 'Video')[:50]}... - {skip_reason}")
+            print(f"   ⏭️  Skipped: {skip_reason}")
+            continue
+        
+        # Extract timestamps using transcript analysis
+        timestamps = video_transcript_analyzer.extract_solution_timestamps(
+            video_url=video_url,
+            pattern_name=primary_pattern_name,
+            pattern_keywords=pattern_keywords
+        )
+        
+        if timestamps:
+            video_segments.append(VideoSegment(
+                title=vid.get("title", ""),
+                url=video_url,
+                thumbnail=vid.get("thumbnail"),
+                channel=vid.get("channel"),
+                start_time=timestamps["start_formatted"],
+                end_time=timestamps["end_formatted"],
+                relevance_note=f"Covers {primary_pattern_name} solution ({timestamps['confidence']} confidence)"
+            ))
+            print(f"   ✓ Extracted: [{timestamps['start_formatted']} - {timestamps['end_formatted']}]")
+        else:
+            video_skip_reasons.append(f"{vid.get('title', '')[:50]}... - Pattern not found in transcript")
+    
+    print(f"   ✓ Processed {len(video_segments)} videos, skipped {len(video_skip_reasons)}")
     
     # Step 6: Debugging Insights
-    print("[6/6] 🐛 Generating debugging insights...")
+    print("[6/7] 🐛 Generating debugging insights...")
     debugging_insight = debug_analyzer.generate_debug_insight(
-        pattern_name=pattern_name,
+        pattern_name=primary_pattern_name,
         code=req.code,
         error_message=req.message,
         user_message=req.message
     )
     print(f"   ✓ Debugging insight generated")
     
-    # Assemble comprehensive response
-    print(f"\n{'='*50}")
-    print(f"✅ PATTERN INTELLIGENCE RESPONSE READY")
-    print(f"{'='*50}\n")
+    # Step 7: Assemble Response
+    print("[7/7] 📦 Assembling comprehensive response...")
+    print(f"\n{'='*60}")
+    print(f"✅ ENHANCED PATTERN INTELLIGENCE RESPONSE READY")
+    print(f"{'='*60}\n")
     
     return ChatResponse(
-        # Pattern Intelligence
-        pattern_name=pattern_name,
+        # PRIMARY Pattern (ALWAYS FIRST - Rule Enforced)
+        primary_pattern=primary_pattern_name,
+        primary_pattern_explanation=pattern_explanation,
+        
+        # Secondary Issues (syntax, types, etc.)
+        secondary_issues=secondary_issues,
+        
+        # Pattern Intelligence (Legacy compatibility)
+        pattern_name=primary_pattern_name,
         pattern_explanation=pattern_explanation,
         confidence_score=confidence,
         learning_intent=learning_intent,
         
         # Solutions
-        explanation=f"**Pattern Detected:** {pattern_name}\n\n{pattern_explanation}",
+        explanation=f"**PRIMARY PATTERN:** {primary_pattern_name}\n\n{pattern_explanation}",
         corrected_code=corrected_code,
         
         # External Knowledge
@@ -336,8 +384,9 @@ async def chat(req: ChatRequest, user=Depends(auth.get_current_user)):
         stackoverflow_links=external_knowledge["stackoverflow_threads"],
         dev_articles=external_knowledge["dev_articles"],
         
-        # Video Segments
+        # Video Segments (with REAL timestamps from transcripts)
         video_segments=video_segments,
+        video_skip_reasons=video_skip_reasons,  # TRANSPARENCY
         
         # Debugging Insights
         debugging_insight=debugging_insight,

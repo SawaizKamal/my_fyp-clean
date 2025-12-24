@@ -115,15 +115,27 @@ function ChatPage() {
 
           {response && (
             <div className="space-y-6">
-              {/* Pattern Badge */}
+              {/* PRIMARY Pattern Badge (Prominent Display) */}
               <div className="flex items-center gap-4">
-                <div className="bg-purple-600 px-4 py-2 rounded-lg">
-                  <span className="font-bold">🧠 {response.pattern_name}</span>
+                <div className="bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-3 rounded-lg shadow-lg">
+                  <span className="font-bold text-lg">🧠 PRIMARY: {response.primary_pattern || response.pattern_name}</span>
                 </div>
                 <div className="bg-gray-800 px-4 py-2 rounded-lg">
                   <span className="text-sm">Confidence: {response.confidence_score}%</span>
                 </div>
               </div>
+
+              {/* Secondary Issues (if any) */}
+              {response.secondary_issues && response.secondary_issues.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  <span className="text-gray-400 text-sm">Secondary Issues:</span>
+                  {response.secondary_issues.map((issue, index) => (
+                    <span key={index} className="bg-yellow-600 bg-opacity-20 border border-yellow-600 px-3 py-1 rounded-full text-xs text-yellow-300">
+                      ⚠️ {issue}
+                    </span>
+                  ))}
+                </div>
+              )}
 
               {/* Learning Intent */}
               <div className="bg-blue-500 bg-opacity-10 border border-blue-500 rounded-xl p-4">
@@ -136,7 +148,7 @@ function ChatPage() {
               <div className="bg-gray-800 rounded-xl p-6">
                 <h2 className="text-xl font-bold text-purple-400 mb-4">💡 Why This Pattern Fails</h2>
                 <div className="prose prose-invert max-w-none">
-                  <p className="text-gray-300 whitespace-pre-wrap">{response.pattern_explanation}</p>
+                  <p className="text-gray-300 whitespace-pre-wrap">{response.primary_pattern_explanation || response.pattern_explanation}</p>
                 </div>
               </div>
 

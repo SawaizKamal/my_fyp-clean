@@ -13,6 +13,8 @@ OPENAI_CLIENT = OpenAI(api_key=OPENAI_API_KEY)
 PATTERN_LIBRARY = {
     "async_await_misuse": {
         "name": "Async/Await Misuse",
+        "pattern_type": "PRIMARY",
+        "task_type": "async_handling",
         "description": "Using synchronous code in async functions or not awaiting async calls",
         "keywords": ["async", "await", "coroutine", "asyncio", "asynchronous"],
         "common_errors": ["coroutine was never awaited", "RuntimeWarning", "event loop"],
@@ -20,8 +22,10 @@ PATTERN_LIBRARY = {
     },
     "algorithm_complexity": {
         "name": "Algorithm Complexity Issue",
+        "pattern_type": "PRIMARY",
+        "task_type": "searching",  # or sorting, depending on context
         "description": "Using inefficient algorithms (O(n²) when O(n log n) exists)",
-        "keywords": ["nested loop", "performance", "slow", "timeout", "efficiency"],
+        "keywords": ["nested loop", "performance", "slow", "timeout", "efficiency", "search", "sort"],
         "common_errors": ["timeout", "too slow", "performance issue"],
         "learning_intent": "Understanding algorithm complexity and optimization techniques"
     },
@@ -76,8 +80,10 @@ PATTERN_LIBRARY = {
     },
     "type_coercion_error": {
         "name": "Type Coercion Error",
-        "description": "Unexpected type conversions or type-related bugs",
-        "keywords": ["type", "typeof", "NaN", "undefined", "null", "coercion"],
+        "pattern_type": "SECONDARY",
+        "task_type": "syntax",
+        "description": "Unexpected type conversions or type-related bugs (SECONDARY - not primary pattern)",
+        "keywords": ["type", "typeof", "NaN", "undefined", "null", "coercion", "===", "=="],
         "common_errors": ["NaN", "undefined is not a function", "cannot read property"],
         "learning_intent": "Understanding type systems and type safety"
     },
@@ -90,10 +96,22 @@ PATTERN_LIBRARY = {
     },
     "dependency_version_conflict": {
         "name": "Dependency Version Conflict",
+        "pattern_type": "PRIMARY",
+        "task_type": "deployment",
         "description": "Package version mismatches or dependency hell",
         "keywords": ["dependency", "version", "package", "npm", "pip", "install"],
         "common_errors": ["dependency conflict", "version mismatch", "module not found"],
         "learning_intent": "Managing dependencies and understanding semantic versioning"
+    },
+    # SECONDARY PATTERN - Syntax/Logic Errors
+    "syntax_logic_error": {
+        "name": "Syntax/Logic Error",
+        "pattern_type": "SECONDARY",
+        "task_type": "syntax",
+        "description": "Basic syntax mistakes (=== vs ==, missing semicolons, etc.)",
+        "keywords": ["syntax", "==", "===", "semicolon", "typo", "undefined"],
+        "common_errors": ["syntax error", "unexpected token", "missing"],
+        "learning_intent": "Understanding language syntax and common pitfalls"
     }
 }
 
@@ -171,6 +189,84 @@ async_await_misuse
         # Fallback to keyword-based detection
         pattern_key = _fallback_pattern_detection((context or "").lower())
         return pattern_key, 60.0
+
+
+
+
+def detect_primary_and_secondary_patterns(
+    code: Optional[str],
+    error_message: str,
+    user_message: str
+) -> Dict[str, any]:
+    """
+    Detect PRIMARY pattern (algorithm/architecture) and SECONDARY issues (syntax).
+    Enforces rule: Algorithmic intent ALWAYS identified before syntax bugs.
+    
+    Args:
+        code: Optional code snippet
+        error_message: Error message
+        user_message: User's description
+    
+    Returns:
+        Dict with primary_pattern, secondary_issues, confidence
+    """
+    # First detect all patterns
+    primary_pattern_key, confidence = detect_pattern(code, error_message, user_message)
+    
+    # Check if detected pattern is PRIMARY or SECONDARY
+    pattern_info = PATTERN_LIBRARY.get(primary_pattern_key, {})
+    pattern_type = pattern_info.get("pattern_type", "PRIMARY")
+    
+    # If detected pattern is SECONDARY, try to find PRIMARY pattern
+    if pattern_type == "SECONDARY":
+        # Look for PRIMARY patterns in code/error
+        context = f"{user_message} {error_message} {code or ''}".lower()
+        
+        # Search for PRIMARY patterns
+        primary_candidates = []
+        for key, info in PATTERN_LIBRARY.items():
+            if info.get("pattern_type") == "PRIMARY":
+                score = 0
+                for keyword in info.get('keywords', []):
+                    if keyword.lower() in context:
+                        score += 1
+                if score > 0:
+                    primary_candidates.append((key, score))
+        
+        # If PRIMARY pattern found, use it and make original pattern SECONDARY
+        if primary_candidates:
+            primary_pattern_key = max(primary_candidates, key=lambda x: x[1])[0]
+            secondary_pattern = get_pattern_name(detect_pattern(code, error_message, user_message)[0])
+            return {
+                "primary_pattern": primary_pattern_key,
+                "primary_pattern_name": get_pattern_name(primary_pattern_key),
+                "secondary_issues": [secondary_pattern],
+                "confidence": confidence
+            }
+    
+    # If PRIMARY pattern detected, check for SECONDARY issues
+    secondary_issues = []
+    context_lower = f"{code or ''} {error_message}".lower()
+    
+    # Check for common secondary issues
+    if "===" in context_lower or "==" in context_lower or "=" in context_lower:
+        if "comparison" in error_message.lower() or "assignment" in context_lower:
+            secondary_issues.append("Assignment operator (=) used instead of comparison (==)")
+    
+    if "type" in error_message.lower() and pattern_type != "SECONDARY":
+        secondary_issues.append("Type coercion issue")
+    
+    return {
+        "primary_pattern": primary_pattern_key,
+        "primary_pattern_name": get_pattern_name(primary_pattern_key),
+        "secondary_issues": secondary_issues,
+        "confidence": confidence
+    }
+
+
+def get_pattern_name(pattern_key: str) -> str:
+    """Get pattern name from key"""
+    return PATTERN_LIBRARY.get(pattern_key, {}).get("name", "Unknown Pattern")
 
 
 def _fallback_pattern_detection(text: str) -> str:
@@ -309,3 +405,8 @@ def get_learning_intent(pattern_key: str) -> str:
         "learning_intent", 
         "Understanding best practices and avoiding common pitfalls"
     )
+
+
+def get_pattern_keywords(pattern_key: str) -> List[str]:
+    """Get keywords for a pattern (for video transcript search)"""
+    return PATTERN_LIBRARY.get(pattern_key, {}).get("keywords", [])
