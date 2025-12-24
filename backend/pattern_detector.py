@@ -20,14 +20,32 @@ PATTERN_LIBRARY = {
         "common_errors": ["coroutine was never awaited", "RuntimeWarning", "event loop"],
         "learning_intent": "Understanding asynchronous programming and proper async/await usage"
     },
-    "algorithm_complexity": {
-        "name": "Algorithm Complexity Issue",
+    "linear_search_algorithm": {
+        "name": "Linear Search Algorithm",
         "pattern_type": "PRIMARY",
-        "task_type": "searching",  # or sorting, depending on context
-        "description": "Using inefficient algorithms (O(n²) when O(n log n) exists)",
-        "keywords": ["nested loop", "performance", "slow", "timeout", "efficiency", "search", "sort"],
-        "common_errors": ["timeout", "too slow", "performance issue"],
-        "learning_intent": "Understanding algorithm complexity and optimization techniques"
+        "task_type": "searching",
+        "description": "Using linear/sequential search O(n) - iterating through array element by element",
+        "keywords": ["loop", "iterate", "search", "find", "array", "linear", "sequential"],
+        "common_errors": ["slow search", "timeout", "performance on large arrays"],
+        "learning_intent": "Understanding linear search complexity and when to use more efficient search algorithms"
+    },
+    "binary_search_algorithm": {
+        "name": "Binary Search Algorithm",
+        "pattern_type": "PRIMARY",
+        "task_type": "searching",
+        "description": "Binary search issues - requires sorted array, O(log n) complexity",
+        "keywords": ["binary", "sorted", "divide", "mid", "log", "search"],
+        "common_errors": ["array not sorted", "infinite loop in binary search"],
+        "learning_intent": "Understanding binary search requirements and O(log n) complexity"
+    },
+    "sorting_algorithm_issue": {
+        "name": "Sorting Algorithm Issue",
+        "pattern_type": "PRIMARY",
+        "task_type": "sorting",
+        "description": "Inefficient sorting algorithms (bubble/selection O(n²) vs quicksort/mergesort O(n log n))",
+        "keywords": ["sort", "bubble", "selection", "quicksort", "mergesort", "nested loop"],
+        "common_errors": ["slow sorting", "timeout on large arrays"],
+        "learning_intent": "Understanding sorting algorithm complexities and choosing the right one"
     },
     "api_lifecycle_misuse": {
         "name": "API Lifecycle Misuse",

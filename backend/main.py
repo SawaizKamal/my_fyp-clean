@@ -94,9 +94,11 @@ class VideoSegment(BaseModel):
     url: str
     thumbnail: Optional[str] = None
     channel: Optional[str] = None
-    start_time: Optional[str] = None
+    start_time:Optional[str] = None
     end_time: Optional[str] = None
     relevance_note: Optional[str] = None
+    transcript_text: Optional[str] = None  # Full transcript
+    highlighted_portion: Optional[str] = None  # Solution section with ** highlights
 
 class ChatResponse(BaseModel):
     # PRIMARY Pattern (ALWAYS FIRST - Rule Enforced)
@@ -360,7 +362,9 @@ async def chat(req: ChatRequest, user=Depends(auth.get_current_user)):
                 channel=vid.get("channel"),
                 start_time=timestamps["start_formatted"],
                 end_time=timestamps["end_formatted"],
-                relevance_note=f"Covers {primary_pattern_name} solution ({timestamps['confidence']} confidence)"
+                relevance_note=f"Covers {primary_pattern_name} solution ({timestamps['confidence']} confidence)",
+                transcript_text=timestamps.get("transcript_text", ""),  # Full transcript
+                highlighted_portion=timestamps.get("highlighted_portion", "")  # Highlighted solution
             ))
             print(f"   ✓ Extracted: [{timestamps['start_formatted']} - {timestamps['end_formatted']}]")
         else:

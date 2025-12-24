@@ -269,50 +269,63 @@ function ChatPage() {
                 </div>
               )}
 
-              {/* Video Segments with Timestamps */}
+              {/* Video Segments with Transcript Display */}
               {response.video_segments && response.video_segments.length > 0 && (
                 <div className="bg-gray-800 rounded-xl p-6">
-                  <h2 className="text-xl font-bold text-purple-400 mb-4">🎥 Pattern-Specific Video Segments</h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <h2 className="text-xl font-bold text-purple-400 mb-4">🎥 Pattern-Specific Videos + Transcripts</h2>
+                  <div className="space-y-4">
                     {response.video_segments.map((video, index) => (
-                      <a
-                        key={index}
-                        href={video.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="bg-gray-900 rounded-lg overflow-hidden hover:bg-gray-700 transition"
-                      >
-                        {video.thumbnail && (
-                          <img
-                            src={video.thumbnail}
-                            alt={video.title}
-                            className="w-full h-40 object-cover"
-                          />
-                        )}
-                        <div className="p-4">
-                          <h3 className="font-semibold text-white mb-2 line-clamp-2">
-                            {video.title}
-                          </h3>
-                          <p className="text-sm text-gray-400">{video.channel}</p>
-                          {video.relevance_note && (
-                            <p className="text-xs text-purple-400 mt-2">🎯 {video.relevance_note}</p>
-                          )}
-                          {(video.start_time || video.end_time) && (
-                            <div className="mt-2 flex gap-2">
-                              {video.start_time && (
-                                <span className="bg-purple-600 text-xs px-2 py-1 rounded">
-                                  {video.start_time}
-                                </span>
-                              )}
-                              {video.end_time && (
-                                <span className="bg-purple-600 text-xs px-2 py-1 rounded">
-                                  {video.end_time}
-                                </span>
-                              )}
-                            </div>
-                          )}
+                      <div key={index} className="bg-gray-900 rounded-lg p-4">
+                        <div className="flex gap-4">
+                          <a href={video.url} target="_blank" rel="noopener noreferrer" className="shrink-0">
+                            {video.thumbnail && (
+                              <img src={video.thumbnail} alt={video.title} className="w-48 h-32 object-cover rounded" />
+                            )}
+                          </a>
+                          <div className="flex-1">
+                            <a href={video.url} target="_blank" rel="noopener noreferrer">
+                              <h3 className="font-semibold text-white mb-1 hover:text-purple-400">{video.title}</h3>
+                            </a>
+                            <p className="text-sm text-gray-400 mb-2">{video.channel}</p>
+                            {video.relevance_note && (
+                              <p className="text-xs text-purple-400 mb-2">🎯 {video.relevance_note}</p>
+                            )}
+                            {(video.start_time && video.end_time) && (
+                              <span className="bg-green-600 text-xs px-3 py-1 rounded font-mono">
+                                ⏱️ {video.start_time} - {video.end_time}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </a>
+                        {video.highlighted_portion && (
+                          <details className="mt-4">
+                            <summary className="cursor-pointer text-sm text-blue-400 hover:text-blue-300 font-semibold">
+                              📜 View Transcript (Solution Highlighted ⭐)
+                            </summary>
+                            <div className="mt-3 p-4 bg-gray-800 rounded border border-gray-700 max-h-64 overflow-y-auto">
+                              <div className="text-xs font-mono whitespace-pre-wrap leading-relaxed">
+                                {video.highlighted_portion.split('\n').map((line, i) => {
+                                  const isBold = line.includes('**');
+                                  const cleanLine = line.replace(/\*\*/g, '');
+                                  return (
+                                    <div
+                                      key={i}
+                                      className={isBold
+                                        ? "bg-yellow-500 bg-opacity-20 text-yellow-300 font-bold my-1 px-2 py-1 rounded"
+                                        : "text-gray-400 my-1 px-2"}
+                                    >
+                                      {cleanLine}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <p className="text-xs text-gray-500 mt-3 italic">
+                                💡 Yellow = Key solution moments
+                              </p>
+                            </div>
+                          </details>
+                        )}
+                      </div>
                     ))}
                   </div>
                 </div>

@@ -145,7 +145,7 @@ def extract_solution_timestamps(
     pattern_keywords: List[str]
 ) -> Optional[Dict]:
     """
-    Extract solution timestamps from video transcript.
+    Extract solution timestamps from video transcript WITH highlighted text.
     
     Args:
         video_url: YouTube video URL
@@ -153,7 +153,8 @@ def extract_solution_timestamps(
         pattern_keywords: Keywords related to pattern
     
     Returns:
-        Dict with {start_time, end_time, start_formatted, end_formatted, confidence}
+        Dict with {start_time, end_time, start_formatted, end_formatted, confidence, 
+                   transcript_text, highlighted_portion}
         or None if transcript unavailable
     """
     # Check availability first
@@ -179,12 +180,36 @@ def extract_solution_timestamps(
         secs = int(seconds % 60)
         return f"{mins}:{secs:02d}"
     
+    # Extract transcript text for the solution section
+    solution_text = []
+    full_transcript_text = []
+    keywords_lower = [kw.lower() for kw in pattern_keywords]
+    
+    for segment in transcript:
+        segment_time = segment['start']
+        segment_text = segment['text']
+        
+        # Build full transcript
+        timestamp_str = format_time(segment_time)
+        full_transcript_text.append(f"[{timestamp_str}] {segment_text}")
+        
+        # Extract solution portion (within our timestamp range)
+        if start_time <= segment_time <= end_time:
+            # Check if this segment contains keywords (HIGHLIGHT)
+            has_keywords = any(kw in segment_text.lower() for kw in keywords_lower)
+            if has_keywords:
+                solution_text.append(f"**[{timestamp_str}] {segment_text}**")  # Highlighted
+            else:
+                solution_text.append(f"[{timestamp_str}] {segment_text}")
+    
     return {
         "start_time": start_time,
         "end_time": end_time,
         "start_formatted": format_time(start_time),
         "end_formatted": format_time(end_time),
-        "confidence": "high" if timestamps else "medium"
+        "confidence": "high" if timestamps else "medium",
+        "transcript_text": "\n".join(full_transcript_text),  # Full transcript
+        "highlighted_portion": "\n".join(solution_text)  # Solution section with highlights
     }
 
 
