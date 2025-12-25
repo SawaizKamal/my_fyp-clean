@@ -37,10 +37,15 @@ def search_github_repos(query: str, max_results: int = 5) -> List[Dict[str, str]
             repos = []
             
             for item in data.get("items", [])[:max_results]:
+                # Truncate description to keep it concise
+                description = item.get("description", "No description available")
+                if description and len(description) > 100:
+                    description = description[:100] + "..."
+                
                 repos.append({
                     "name": item.get("full_name", ""),
                     "url": item.get("html_url", ""),
-                    "description": item.get("description", "No description available"),
+                    "description": description,  # Truncated description
                     "stars": item.get("stargazers_count", 0),
                     "language": item.get("language", "Unknown")
                 })

@@ -191,28 +191,27 @@ function ChatPage() {
                 </div>
               )}
 
-              {/* GitHub Repositories */}
+              {/* GitHub Repositories - Compact Display (Name, Stars, Language Only) */}
               {response.github_repos && response.github_repos.length > 0 && (
                 <div className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-6">
                   <h2 className="text-xl font-bold text-purple-400 mb-4">🔗 GitHub Repositories</h2>
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {response.github_repos.map((repo, index) => (
                       <a
                         key={index}
                         href={repo.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="block bg-[#1a1a1a] border border-[#2a2a2a] p-4 rounded-lg hover:bg-[#252525] hover:border-purple-600/50 transition"
+                        className="flex items-center justify-between bg-[#1a1a1a] border border-[#2a2a2a] px-4 py-3 rounded-lg hover:bg-[#252525] hover:border-purple-600/50 transition group"
                       >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h3 className="font-semibold text-white">{repo.name}</h3>
-                            <p className="text-sm text-gray-400 mt-1">{repo.description}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-yellow-400">⭐ {repo.stars}</p>
-                            <p className="text-xs text-gray-500">{repo.language}</p>
-                          </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="font-medium text-purple-400 group-hover:text-purple-300 text-sm block truncate">
+                            {repo.name}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-4 text-xs ml-4 shrink-0">
+                          <span className="text-yellow-400">⭐ {repo.stars}</span>
+                          <span className="text-gray-500 bg-[#0a0a0a] px-2 py-1 rounded">{repo.language}</span>
                         </div>
                       </a>
                     ))}
@@ -269,23 +268,32 @@ function ChatPage() {
                 </div>
               )}
 
-              {/* Video Segments with Transcript Display */}
+              {/* Video Segments with Embedded Player and Transcript Display */}
               {response.video_segments && response.video_segments.length > 0 ? (
                 <div className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-6">
                   <h2 className="text-xl font-bold text-purple-400 mb-4">🎥 Pattern-Specific Videos + Transcripts</h2>
-                  <div className="space-y-4">
-                    {response.video_segments.map((video, index) => (
-                      <div key={index} className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-4">
-                        <div className="flex gap-4">
-                          <a href={video.url} target="_blank" rel="noopener noreferrer" className="shrink-0">
-                            {video.thumbnail && (
-                              <img src={video.thumbnail} alt={video.title} className="w-48 h-32 object-cover rounded" />
-                            )}
-                          </a>
-                          <div className="flex-1">
-                            <a href={video.url} target="_blank" rel="noopener noreferrer">
-                              <h3 className="font-semibold text-white mb-1 hover:text-purple-400">{video.title}</h3>
-                            </a>
+                  <div className="space-y-6">
+                    {response.video_segments.map((video, index) => {
+                      // Extract video ID from URL if not provided
+                      const videoId = video.video_id || (video.url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?]*)/)?.[1] || '');
+                      
+                      // Parse start time (format: MM:SS or seconds)
+                      let startSeconds = 0;
+                      if (video.start_time) {
+                        const timeParts = video.start_time.split(':');
+                        if (timeParts.length === 2) {
+                          startSeconds = parseInt(timeParts[0]) * 60 + parseInt(timeParts[1]);
+                        } else {
+                          startSeconds = parseInt(video.start_time) || 0;
+                        }
+                      }
+                      
+                      const embedUrl = videoId ? `https://www.youtube.com/embed/${videoId}${startSeconds > 0 ? `?start=${startSeconds}` : ''}` : null;
+                      
+                      return (
+                        <div key={index} className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-4">
+                          <div className="mb-4">
+                            <h3 className="font-semibold text-white mb-2">{video.title}</h3>
                             <p className="text-sm text-gray-400 mb-2">{video.channel}</p>
                             {video.relevance_note && (
                               <p className="text-xs text-purple-400 mb-2">🎯 {video.relevance_note}</p>
@@ -296,37 +304,74 @@ function ChatPage() {
                               </span>
                             )}
                           </div>
-                        </div>
-                        {video.highlighted_portion && (
-                          <details className="mt-4">
-                            <summary className="cursor-pointer text-sm text-blue-400 hover:text-blue-300 font-semibold">
-                              📜 View Transcript (Solution Highlighted ⭐)
-                            </summary>
-                            <div className="mt-3 p-4 bg-[#0a0a0a] rounded border border-[#2a2a2a] max-h-64 overflow-y-auto">
-                              <div className="text-xs font-mono whitespace-pre-wrap leading-relaxed">
-                                {video.highlighted_portion.split('\n').map((line, i) => {
-                                  const isBold = line.includes('**');
-                                  const cleanLine = line.replace(/\*\*/g, '');
-                                  return (
-                                    <div
-                                      key={i}
-                                      className={isBold
-                                        ? "bg-yellow-500 bg-opacity-20 text-yellow-300 font-bold my-1 px-2 py-1 rounded"
-                                        : "text-gray-400 my-1 px-2"}
-                                    >
-                                      {cleanLine}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                              <p className="text-xs text-gray-500 mt-3 italic">
-                                💡 Yellow = Key solution moments
-                              </p>
+                          
+                          {/* Embedded YouTube Player */}
+                          {embedUrl ? (
+                            <div className="mb-4 bg-black rounded-lg overflow-hidden">
+                              <iframe
+                                width="100%"
+                                height="400"
+                                src={embedUrl}
+                                title={video.title}
+                                frameBorder="0"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
+                                className="w-full"
+                              ></iframe>
                             </div>
-                          </details>
-                        )}
-                      </div>
-                    ))}
+                          ) : (
+                            <div className="mb-4 bg-[#0a0a0a] rounded-lg p-4 border border-[#2a2a2a]">
+                              <p className="text-gray-400 text-sm">Video player unavailable</p>
+                              <a href={video.url} target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300 text-sm">
+                                Open in YouTube →
+                              </a>
+                            </div>
+                          )}
+                          
+                          {/* Transcript with Solution Highlighting */}
+                          {video.highlighted_portion && (
+                            <details className="mt-4" open>
+                              <summary className="cursor-pointer text-sm text-blue-400 hover:text-blue-300 font-semibold mb-2">
+                                📜 View Transcript (Solution Highlighted ⭐)
+                              </summary>
+                              <div className="mt-3 p-4 bg-[#0a0a0a] rounded border border-[#2a2a2a] max-h-96 overflow-y-auto">
+                                <div className="text-xs font-mono whitespace-pre-wrap leading-relaxed">
+                                  {video.highlighted_portion.split('\n').map((line, i) => {
+                                    const isBold = line.includes('**');
+                                    const cleanLine = line.replace(/\*\*/g, '');
+                                    return (
+                                      <div
+                                        key={i}
+                                        className={isBold
+                                          ? "bg-yellow-500 bg-opacity-30 border-l-4 border-yellow-500 text-yellow-200 font-bold my-2 px-3 py-2 rounded-r"
+                                          : "text-gray-400 my-1 px-2"}
+                                      >
+                                        {cleanLine}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                                <p className="text-xs text-gray-500 mt-3 italic border-t border-[#2a2a2a] pt-3">
+                                  💡 <strong>Yellow highlighted sections</strong> = Key solution moments where the pattern is explained
+                                </p>
+                              </div>
+                            </details>
+                          )}
+                          
+                          {/* Full Transcript (if available and different from highlighted) */}
+                          {video.transcript_text && video.transcript_text !== video.highlighted_portion && (
+                            <details className="mt-2">
+                              <summary className="cursor-pointer text-sm text-gray-400 hover:text-gray-300 text-xs">
+                                📄 View Full Transcript
+                              </summary>
+                              <div className="mt-2 p-3 bg-[#0a0a0a] rounded border border-[#2a2a2a] max-h-64 overflow-y-auto text-xs text-gray-400 font-mono">
+                                <pre className="whitespace-pre-wrap">{video.transcript_text}</pre>
+                              </div>
+                            </details>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                   {response.video_skip_reasons && response.video_skip_reasons.length > 0 && (
                     <details className="mt-4">

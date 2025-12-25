@@ -112,6 +112,7 @@ class ChatRequest(BaseModel):
 class VideoSegment(BaseModel):
     title: str
     url: str
+    video_id: Optional[str] = None  # YouTube video ID for embedding
     thumbnail: Optional[str] = None
     channel: Optional[str] = None
     start_time:Optional[str] = None
@@ -658,12 +659,16 @@ async def chat(req: ChatRequest, user=Depends(auth.get_current_user)):
                 has_transcript = False
                 skip_reason = f"Timestamp extraction failed: {str(e)[:50]}"
         
+        # Extract video ID for embedding
+        video_id = video_transcript_analyzer.extract_video_id(video_url)
+        
         # Add video even if transcript is not available (but note it)
         if timestamps:
             # Video with timestamps - full featured
             video_segments.append(VideoSegment(
                 title=video_title,
                 url=video_url,
+                video_id=video_id,
                 thumbnail=vid.get("thumbnail"),
                 channel=vid.get("channel"),
                 start_time=timestamps["start_formatted"],
@@ -678,6 +683,7 @@ async def chat(req: ChatRequest, user=Depends(auth.get_current_user)):
             video_segments.append(VideoSegment(
                 title=video_title,
                 url=video_url,
+                video_id=video_id,
                 thumbnail=vid.get("thumbnail"),
                 channel=vid.get("channel"),
                 start_time=None,
@@ -692,6 +698,7 @@ async def chat(req: ChatRequest, user=Depends(auth.get_current_user)):
             video_segments.append(VideoSegment(
                 title=video_title,
                 url=video_url,
+                video_id=video_id,
                 thumbnail=vid.get("thumbnail"),
                 channel=vid.get("channel"),
                 start_time=None,
