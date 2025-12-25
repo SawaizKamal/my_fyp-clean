@@ -21,6 +21,7 @@ import pattern_detector
 import knowledge_search
 import debug_analyzer
 import video_transcript_analyzer
+import advanced_code_analyzer
 from openai import OpenAI
 OPENAI_CLIENT = OpenAI(api_key=OPENAI_API_KEY)
 
@@ -106,6 +107,7 @@ class ProcessRequest(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     code: Optional[str] = None
+    use_advanced_analysis: Optional[bool] = False  # New flag for advanced analysis
 
 class VideoSegment(BaseModel):
     title: str
@@ -432,12 +434,150 @@ async def transcribe_local_video(file: UploadFile = File(...), user=Depends(auth
 
 
 # ---------------- CHAT ----------------
+@app.post("/api/chat/advanced")
+async def chat_advanced(req: ChatRequest, user=Depends(auth.get_current_user)):
+    """
+    Advanced Deterministic Code Analysis endpoint
+    Returns strict JSON format as specified in requirements
+    
+    Format:
+    {
+      "code_type": "",
+      "specific_pattern_or_algorithm": "",
+      "confidence": "high | medium | low",
+      "errors_detected": [{"type": "", "description": ""}],
+      "solution": {"fixed_code": "", "explanation": ""},
+      "videos": [{
+        "title": "",
+        "video_id": "",
+        "start_time": 0,
+        "end_time": 0,
+        "key_solution_segments": [{"start": 0, "end": 0, "transcript": ""}]
+      }]
+    }
+    """
+    if not req.code:
+        raise HTTPException(400, "Code is required for advanced analysis")
+    
+    logger.info(f"Advanced analysis requested by {user.get('username', 'unknown')}")
+    
+    # Perform advanced analysis
+    analysis_result = advanced_code_analyzer.analyze_code(
+        code=req.code,
+        error_message=req.message,
+        user_message=req.message
+    )
+    
+    # Enhance videos with actual YouTube search and transcript extraction
+    code_type = analysis_result["code_type"]
+    specific_pattern = analysis_result["specific_pattern_or_algorithm"]
+    confidence = analysis_result["confidence"]
+    
+    # Only search for videos if we have a clear pattern (not edge case)
+    if code_type != "edge_case" and specific_pattern != "Uncertain" and confidence != "low":
+        # Build search query based on pattern type
+        if code_type == "algorithm":
+            video_query = f"{specific_pattern} algorithm tutorial implementation"
+        elif code_type == "design_pattern":
+            video_query = f"{specific_pattern} design pattern tutorial"
+        elif code_type == "system_server":
+            video_query = f"{specific_pattern} server system tutorial"
+        else:
+            video_query = f"{specific_pattern} programming tutorial"
+        
+        # Search YouTube
+        raw_videos = await search_youtube(video_query)
+        
+        # Process videos and extract key solution segments
+        enhanced_videos = []
+        for vid in raw_videos[:3]:  # Limit to 2-3 videos as specified
+            video_url = vid.get("url", "")
+            video_id = video_transcript_analyzer.extract_video_id(video_url)
+            
+            if not video_id:
+                continue
+            
+            # Get transcript
+            transcript = video_transcript_analyzer.get_video_transcript(video_url)
+            
+            # Extract key solution segments
+            pattern_keywords = [specific_pattern.lower()] + specific_pattern.lower().split("_")
+            key_segments = []
+            
+            if transcript:
+                key_segments = advanced_code_analyzer.extract_key_solution_segments(
+                    transcript, pattern_keywords
+                )
+            
+            # Find overall solution time range
+            start_time = 0
+            end_time = 0
+            if key_segments:
+                start_time = min(seg["start"] for seg in key_segments)
+                end_time = max(seg["end"] for seg in key_segments)
+            elif transcript and len(transcript) > 0:
+                # Use first 2 minutes if no key segments found
+                end_time = min(120, transcript[-1]['start'] + transcript[-1].get('duration', 5))
+            else:
+                # No transcript available
+                continue  # Skip videos without transcripts
+            
+            enhanced_videos.append({
+                "title": vid.get("title", ""),
+                "video_id": video_id,
+                "start_time": int(start_time),
+                "end_time": int(end_time),
+                "key_solution_segments": key_segments
+            })
+        
+        analysis_result["videos"] = enhanced_videos
+    else:
+        # Edge case - return general videos or empty
+        analysis_result["videos"] = []
+    
+    return analysis_result
+
+
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest, user=Depends(auth.get_current_user)):
     """
     ENHANCED Pattern Intelligence Layer - Chat endpoint
     PRIMARY PATTERN FIRST - MANDATORY RULE ENFORCEMENT
+    
+    If use_advanced_analysis is True, uses advanced deterministic analysis
     """
+    # Check if advanced analysis is requested
+    if req.use_advanced_analysis and req.code:
+        logger.info("Using advanced analysis mode")
+        # Use advanced analyzer but convert to ChatResponse format
+        advanced_result = advanced_code_analyzer.analyze_code(
+            code=req.code,
+            error_message=req.message,
+            user_message=req.message
+        )
+        
+        # Convert to ChatResponse format
+        return ChatResponse(
+            primary_pattern=advanced_result["specific_pattern_or_algorithm"],
+            primary_pattern_explanation=advanced_result["solution"]["explanation"],
+            secondary_issues=[err["description"] for err in advanced_result["errors_detected"]],
+            pattern_name=advanced_result["specific_pattern_or_algorithm"],
+            pattern_explanation=advanced_result["solution"]["explanation"],
+            confidence_score=90.0 if advanced_result["confidence"] == "high" else 70.0 if advanced_result["confidence"] == "medium" else 50.0,
+            learning_intent=f"Understanding {advanced_result['code_type']} - {advanced_result['specific_pattern_or_algorithm']}",
+            explanation=advanced_result["solution"]["explanation"],
+            corrected_code=advanced_result["solution"]["fixed_code"],
+            github_repos=[],
+            stackoverflow_links=[],
+            dev_articles=[],
+            video_segments=[],
+            video_skip_reasons=[],
+            debugging_insight={"root_cause": "See errors_detected", "faulty_assumption": "", "correct_flow": ""},
+            links=[],
+            youtube_videos=[],
+            error_analysis=None
+        )
+    
     print(f"\n{'='*60}")
     print(f"🧠 ENHANCED PATTERN INTELLIGENCE SYSTEM")
     print(f"{'='*60}")
