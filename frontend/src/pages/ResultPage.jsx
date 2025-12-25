@@ -83,8 +83,14 @@ function ResultPage() {
 
               {status.status !== 'completed' && status.status !== 'failed' && (
                 <div className="w-full bg-gray-700 rounded-full h-2.5">
-                  <div className="bg-purple-600 h-2.5 rounded-full animate-progress" style={{ width: '50%' }}></div>
+                  <div 
+                    className="bg-purple-600 h-2.5 rounded-full transition-all duration-300" 
+                    style={{ width: `${status.progress || 0}%` }}
+                  ></div>
                 </div>
+              )}
+              {status.progress !== undefined && (
+                <p className="text-sm text-gray-400 mt-2">{status.progress}% complete</p>
               )}
             </div>
           )}

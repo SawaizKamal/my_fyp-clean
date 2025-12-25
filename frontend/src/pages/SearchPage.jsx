@@ -103,6 +103,17 @@ function SearchPage() {
             Enter a search query to find YouTube videos
           </div>
         )}
+        
+        {results.length === 0 && !loading && error && (
+          <div className="text-center text-yellow-500 text-lg mt-20">
+            <p className="mb-4">⚠️ YouTube API key not configured</p>
+            <p className="text-sm text-gray-400">
+              To search YouTube videos, please set the YOUTUBE_API_KEY environment variable.
+              <br />
+              Get your API key from: <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:underline">Google Cloud Console</a>
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -270,7 +270,7 @@ function ChatPage() {
               )}
 
               {/* Video Segments with Transcript Display */}
-              {response.video_segments && response.video_segments.length > 0 && (
+              {response.video_segments && response.video_segments.length > 0 ? (
                 <div className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-6">
                   <h2 className="text-xl font-bold text-purple-400 mb-4">🎥 Pattern-Specific Videos + Transcripts</h2>
                   <div className="space-y-4">
@@ -328,6 +328,42 @@ function ChatPage() {
                       </div>
                     ))}
                   </div>
+                  {response.video_skip_reasons && response.video_skip_reasons.length > 0 && (
+                    <details className="mt-4">
+                      <summary className="cursor-pointer text-sm text-yellow-400 hover:text-yellow-300">
+                        ⚠️ {response.video_skip_reasons.length} video(s) skipped (click to see reasons)
+                      </summary>
+                      <ul className="mt-2 text-xs text-gray-400 space-y-1">
+                        {response.video_skip_reasons.map((reason, i) => (
+                          <li key={i}>• {reason}</li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </div>
+              ) : response && (
+                <div className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-6">
+                  <h2 className="text-xl font-bold text-purple-400 mb-4">🎥 Pattern-Specific Videos</h2>
+                  <p className="text-gray-400">
+                    No videos found for this pattern. This might be because:
+                  </p>
+                  <ul className="list-disc list-inside text-sm text-gray-400 mt-2 space-y-1">
+                    <li>YouTube API key is not configured (set YOUTUBE_API_KEY)</li>
+                    <li>No videos match this specific pattern</li>
+                    <li>Videos found don't have available transcripts</li>
+                  </ul>
+                  {response.video_skip_reasons && response.video_skip_reasons.length > 0 && (
+                    <details className="mt-4">
+                      <summary className="cursor-pointer text-sm text-yellow-400 hover:text-yellow-300">
+                        ⚠️ See skipped videos ({response.video_skip_reasons.length})
+                      </summary>
+                      <ul className="mt-2 text-xs text-gray-400 space-y-1">
+                        {response.video_skip_reasons.map((reason, i) => (
+                          <li key={i}>• {reason}</li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
                 </div>
               )}
             </div>

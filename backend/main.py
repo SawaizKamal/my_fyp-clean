@@ -171,41 +171,30 @@ def parse_segments(text: str):
     return [(float(s), float(e)) for s, e in re.findall(pattern, text)]
 
 async def search_youtube(query: str):
+    """Search YouTube videos - returns list of video dicts"""
     if not YOUTUBE_API_KEY:
-        print("⚠️ YOUTUBE_API_KEY not set - using fallback video recommendations")
-        # Fallback: Return static pattern-based videos when API key not available
-        # These are educational programming videos that cover common patterns
-        return [
-            {
-                "title": f"Tutorial: {query}",
-                "url": "https://youtube.com/watch?v=dQw4w9WgXcQ",  # Placeholder
-                "thumbnail": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
-                "channel": "Educational Programming"
-            },
-            {
-                "title": f"Understanding {query.split()[0] if query else 'Programming Patterns'}",
-                "url": "https://youtube.com/watch?v=dQw4w9WgXcQ",  # Placeholder
-                "thumbnail": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
-                "channel": "Code Academy"
-            },
-            {
-                "title": f"Best Practices for {query.split()[0] if query else 'Coding'}",
-                "url": "https://youtube.com/watch?v=dQw4w9WgXcQ",  # Placeholder
-                "thumbnail": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
-                "channel": "Dev Tips"
-            }
-        ]
+        logger.warning("YOUTUBE_API_KEY not set - using fallback video recommendations")
+        # Return empty list instead of placeholder videos
+        # Placeholder videos cause issues with transcript checking
+        return []
     
-    youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
-    res = youtube.search().list(q=query, part="snippet", type="video", maxResults=3).execute()
-    return [
-        {
-            "title": i["snippet"]["title"],
-            "url": f"https://youtube.com/watch?v={i['id']['videoId']}",
-            "thumbnail": i["snippet"]["thumbnails"]["high"]["url"],
-            "channel": i["snippet"]["channelTitle"],
-        } for i in res["items"]
-    ]
+    try:
+        youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
+        res = youtube.search().list(q=query, part="snippet", type="video", maxResults=3).execute()
+        
+        videos = []
+        for i in res.get("items", []):
+            videos.append({
+                "title": i["snippet"]["title"],
+                "url": f"https://youtube.com/watch?v={i['id']['videoId']}",
+                "thumbnail": i["snippet"]["thumbnails"]["high"]["url"],
+                "channel": i["snippet"]["channelTitle"],
+            })
+        
+        return videos
+    except Exception as e:
+        logger.error(f"YouTube search error: {e}", exc_info=True)
+        return []  # Return empty list on error
 
 # ---------------- VIDEO TASK ----------------
 async def process_video_task(task_id, url, goal):
@@ -293,6 +282,56 @@ async def me(user=Depends(auth.get_current_user)):
     return user
 
 # ---------------- VIDEO ROUTES ----------------
+@app.get("/api/search")
+async def search(q: str = None, max_results: int = 12, user=Depends(auth.get_current_user)):
+    """
+    Search YouTube videos.
+    
+    Args:
+        query: Search query string
+        max_results: Maximum number of results to return (default: 12)
+    
+    Returns:
+        List of video results with video_id, title, thumbnail, channel, etc.
+    """
+    if not q:
+        raise HTTPException(400, "Query parameter 'q' is required")
+    
+    query = q  # Use q as query for consistency
+    
+    try:
+        # Use YouTube API if available, otherwise return empty or fallback
+        if not YOUTUBE_API_KEY:
+            logger.warning("YOUTUBE_API_KEY not set - cannot search YouTube videos")
+            return {"results": [], "message": "YouTube API key not configured. Please set YOUTUBE_API_KEY environment variable."}
+        
+        youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
+        res = youtube.search().list(
+            q=query,
+            part="snippet",
+            type="video",
+            maxResults=min(max_results, 50)  # Limit to 50 max
+        ).execute()
+        
+        results = [
+            {
+                "video_id": i["id"]["videoId"],
+                "title": i["snippet"]["title"],
+                "thumbnail": i["snippet"]["thumbnails"]["high"]["url"],
+                "channel": i["snippet"]["channelTitle"],
+                "description": i["snippet"]["description"][:200] + "..." if len(i["snippet"]["description"]) > 200 else i["snippet"]["description"],
+                "published_at": i["snippet"]["publishedAt"]
+            }
+            for i in res.get("items", [])
+        ]
+        
+        logger.info(f"YouTube search for '{query}': Found {len(results)} videos")
+        return {"results": results, "query": query, "count": len(results)}
+        
+    except Exception as e:
+        logger.error(f"YouTube search error: {e}", exc_info=True)
+        raise HTTPException(500, f"Failed to search YouTube: {str(e)}")
+
 @app.post("/api/process")
 async def process(req: ProcessRequest, bg: BackgroundTasks, user=Depends(auth.get_current_user)):
     task_id = str(uuid.uuid4())
@@ -460,38 +499,69 @@ async def chat(req: ChatRequest, user=Depends(auth.get_current_user)):
     
     for vid in raw_videos[:3]:  # Limit to top 3
         video_url = vid.get("url", "")
+        video_title = vid.get("title", "Video")
         
-        # Check if transcript/audio available (MANDATORY RULE)
+        # Check if transcript/audio available
         has_transcript, skip_reason = video_transcript_analyzer.check_audio_availability(video_url)
         
-        if not has_transcript:
-            # SKIP video and record reason (TRANSPARENCY)
-            video_skip_reasons.append(f"{vid.get('title', 'Video')[:50]}... - {skip_reason}")
-            print(f"   ⏭️  Skipped: {skip_reason}")
-            continue
+        # Try to extract timestamps if transcript is available
+        timestamps = None
+        if has_transcript:
+            try:
+                timestamps = video_transcript_analyzer.extract_solution_timestamps(
+                    video_url=video_url,
+                    pattern_name=primary_pattern_name,
+                    pattern_keywords=pattern_keywords
+                )
+            except Exception as e:
+                logger.warning(f"Failed to extract timestamps from {video_url}: {e}")
+                has_transcript = False
+                skip_reason = f"Timestamp extraction failed: {str(e)[:50]}"
         
-        # Extract timestamps using transcript analysis
-        timestamps = video_transcript_analyzer.extract_solution_timestamps(
-            video_url=video_url,
-            pattern_name=primary_pattern_name,
-            pattern_keywords=pattern_keywords
-        )
-        
+        # Add video even if transcript is not available (but note it)
         if timestamps:
+            # Video with timestamps - full featured
             video_segments.append(VideoSegment(
-                title=vid.get("title", ""),
+                title=video_title,
                 url=video_url,
                 thumbnail=vid.get("thumbnail"),
                 channel=vid.get("channel"),
                 start_time=timestamps["start_formatted"],
                 end_time=timestamps["end_formatted"],
                 relevance_note=f"Covers {primary_pattern_name} solution ({timestamps['confidence']} confidence)",
-                transcript_text=timestamps.get("transcript_text", ""),  # Full transcript
-                highlighted_portion=timestamps.get("highlighted_portion", "")  # Highlighted solution
+                transcript_text=timestamps.get("transcript_text", ""),
+                highlighted_portion=timestamps.get("highlighted_portion", "")
             ))
             print(f"   ✓ Extracted: [{timestamps['start_formatted']} - {timestamps['end_formatted']}]")
+        elif has_transcript:
+            # Video has transcript but pattern not found - still show it
+            video_segments.append(VideoSegment(
+                title=video_title,
+                url=video_url,
+                thumbnail=vid.get("thumbnail"),
+                channel=vid.get("channel"),
+                start_time=None,
+                end_time=None,
+                relevance_note=f"Video about {primary_pattern_name} (no specific timestamps found)",
+                transcript_text="",
+                highlighted_portion=""
+            ))
+            print(f"   ✓ Added video (no timestamps found)")
         else:
-            video_skip_reasons.append(f"{vid.get('title', '')[:50]}... - Pattern not found in transcript")
+            # No transcript - still show video but note it
+            video_segments.append(VideoSegment(
+                title=video_title,
+                url=video_url,
+                thumbnail=vid.get("thumbnail"),
+                channel=vid.get("channel"),
+                start_time=None,
+                end_time=None,
+                relevance_note=f"Video about {primary_pattern_name} (transcript unavailable - watch full video)",
+                transcript_text="",
+                highlighted_portion=""
+            ))
+            video_skip_reasons.append(f"{video_title[:50]}... - {skip_reason}")
+            print(f"   ⚠️  Added video without transcript: {skip_reason}")
     
     print(f"   ✓ Processed {len(video_segments)} videos, skipped {len(video_skip_reasons)}")
     
