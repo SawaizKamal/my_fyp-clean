@@ -305,6 +305,23 @@ function ChatPage() {
                             )}
                           </div>
                           
+                          {/* Action Button - Open with Live Transcription */}
+                          {videoId && (
+                            <div className="mb-4">
+                              <button
+                                onClick={() => navigate(`/video/${videoId}`)}
+                                className="w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 rounded-lg font-semibold transition duration-200 flex items-center justify-center gap-2"
+                              >
+                                <span>🎬</span>
+                                <span>Open with Live Transcription & Solution Highlighting</span>
+                                <span>→</span>
+                              </button>
+                              <p className="text-xs text-gray-500 mt-2 text-center">
+                                Get full transcript with timestamps and jump directly to solution parts
+                              </p>
+                            </div>
+                          )}
+
                           {/* Embedded YouTube Player */}
                           {embedUrl ? (
                             <div className="mb-4 bg-black rounded-lg overflow-hidden">

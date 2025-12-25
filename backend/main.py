@@ -433,6 +433,179 @@ async def transcribe_local_video(file: UploadFile = File(...), user=Depends(auth
                 pass
 
 
+@app.post("/api/video/transcribe/{video_id}")
+async def transcribe_youtube_video(video_id: str, user=Depends(auth.get_current_user)):
+    """
+    Transcribe a YouTube video with Whisper and identify solution segments using OpenAI.
+    Downloads the video, transcribes it, and highlights solution parts.
+    
+    Returns:
+    - video_url: URL to stream/download the video
+    - segments: List of transcript segments with timestamps
+    - solution_segments: List of segment indices that contain solutions (highlighted)
+    - full_transcript: Full transcript text
+    """
+    import tempfile
+    import shutil
+    
+    video_url = f"https://youtube.com/watch?v={video_id}"
+    video_path = None
+    
+    try:
+        logger.info(f"Starting transcription for video: {video_id}")
+        
+        # Step 1: Download video (check for existing file with any extension)
+        base_path = os.path.join(DATA_DIR, video_id)
+        possible_extensions = ['.mp4', '.webm', '.mkv', '.avi']
+        video_path = None
+        
+        # Check if video already exists
+        for ext in possible_extensions:
+            test_path = base_path + ext
+            if os.path.exists(test_path):
+                video_path = test_path
+                logger.info(f"Using cached video: {video_path}")
+                break
+        
+        # Download if not found
+        if not video_path:
+            video_path = base_path + '.mp4'  # Default extension
+            logger.info(f"Downloading video: {video_id}")
+            downloaded_path = youtube_download.download_youtube_video(video_url, video_path)
+            video_path = downloaded_path  # Use the actual downloaded path
+        
+        # Step 2: Transcribe with Whisper
+        logger.info("Transcribing video with Whisper...")
+        model = get_whisper_model()
+        result = model.transcribe(video_path, verbose=False)
+        
+        # Step 3: Format transcript segments
+        transcript_segments = []
+        full_transcript_lines = []
+        
+        for seg in result.get("segments", []):
+            start = seg["start"]
+            end = seg["end"]
+            text = seg["text"].strip()
+            
+            transcript_segments.append({
+                "start": start,
+                "end": end,
+                "text": text,
+                "timestamp": f"{int(start // 60)}:{int(start % 60):02d}"
+            })
+            
+            full_transcript_lines.append(f"[{int(start // 60)}:{int(start % 60):02d}] {text}")
+        
+        full_transcript = "\n".join(full_transcript_lines)
+        
+        # Step 4: Use OpenAI to identify solution segments
+        logger.info("Identifying solution segments with OpenAI...")
+        solution_prompt = f"""Analyze this video transcript and identify segments that contain solutions, explanations, or key teaching moments.
+
+Transcript:
+{full_transcript}
+
+Return a JSON array of segment indices (0-based) that contain solutions or key explanations. Focus on segments that:
+1. Explain how to solve problems
+2. Show code implementations
+3. Provide step-by-step instructions
+4. Explain concepts clearly
+5. Give practical examples
+
+Skip segments that are:
+- Introductions or greetings
+- Filler words or pauses
+- Off-topic discussions
+- Outros or sign-offs
+
+Return ONLY a JSON array like: [0, 5, 12, 23] or [] if no clear solutions found.
+Do not include any other text, just the JSON array."""
+        
+        try:
+            solution_response = await get_gpt4o_response(solution_prompt)
+            # Try to extract JSON array from response
+            import json
+            import re
+            
+            # Find JSON array in response
+            json_match = re.search(r'\[[\d,\s]*\]', solution_response or "")
+            if json_match:
+                solution_indices = json.loads(json_match.group())
+            else:
+                # Fallback: try to parse entire response as JSON
+                try:
+                    solution_indices = json.loads(solution_response)
+                except:
+                    solution_indices = []
+            
+            # Ensure solution_indices is a list of integers
+            if not isinstance(solution_indices, list):
+                solution_indices = []
+            solution_indices = [int(i) for i in solution_indices if isinstance(i, (int, str)) and str(i).isdigit()]
+            
+            # Limit to valid indices
+            solution_indices = [i for i in solution_indices if 0 <= i < len(transcript_segments)]
+            
+        except Exception as e:
+            logger.warning(f"Failed to identify solution segments: {e}")
+            solution_indices = []
+        
+        # Step 5: Prepare video URL for streaming
+        # For now, we'll return the path that can be served via static files
+        # In production, you might want to stream the video differently
+        video_stream_url = f"/api/video/stream/{video_id}"
+        
+        logger.info(f"Transcription complete. Found {len(solution_indices)} solution segments.")
+        
+        return {
+            "video_id": video_id,
+            "video_url": video_stream_url,
+            "segments": transcript_segments,
+            "solution_segments": solution_indices,
+            "full_transcript": full_transcript,
+            "duration": result.get("duration", 0),
+            "language": result.get("language", "unknown"),
+            "total_segments": len(transcript_segments)
+        }
+        
+    except Exception as e:
+        logger.error(f"Video transcription error: {e}", exc_info=True)
+        raise HTTPException(500, f"Transcription failed: {str(e)}")
+
+
+@app.get("/api/video/stream/{video_id}")
+async def stream_video(video_id: str, user=Depends(auth.get_current_user)):
+    """
+    Stream a downloaded video file.
+    """
+    # Try different video extensions
+    base_path = os.path.join(DATA_DIR, video_id)
+    possible_extensions = ['.mp4', '.webm', '.mkv', '.avi']
+    
+    video_path = None
+    for ext in possible_extensions:
+        test_path = base_path + ext
+        if os.path.exists(test_path):
+            video_path = test_path
+            break
+    
+    if not video_path:
+        raise HTTPException(404, "Video not found. Please transcribe the video first.")
+    
+    # Determine media type based on extension
+    media_types = {
+        '.mp4': 'video/mp4',
+        '.webm': 'video/webm',
+        '.mkv': 'video/x-matroska',
+        '.avi': 'video/x-msvideo'
+    }
+    ext = os.path.splitext(video_path)[1].lower()
+    media_type = media_types.get(ext, 'video/mp4')
+    
+    return FileResponse(video_path, media_type=media_type)
+
+
 
 # ---------------- CHAT ----------------
 @app.post("/api/chat/advanced")

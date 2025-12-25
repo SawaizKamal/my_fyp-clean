@@ -8,6 +8,7 @@ import SearchPage from './pages/SearchPage';
 import ProcessPage from './pages/ProcessPage';
 import ResultPage from './pages/ResultPage';
 import ChatPage from './pages/ChatPage';
+import VideoPlayerPage from './pages/VideoPlayerPage';
 import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
@@ -48,6 +49,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <ChatPage />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/video/:videoId" 
+            element={
+              <ProtectedRoute>
+                <VideoPlayerPage />
               </ProtectedRoute>
             } 
           />

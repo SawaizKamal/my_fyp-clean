@@ -17,6 +17,8 @@ backend/output/
 backend/dist_build/
 *.mp4
 *.webm
+*.mkv
+*.avi
 
 # Database files
 *.db
