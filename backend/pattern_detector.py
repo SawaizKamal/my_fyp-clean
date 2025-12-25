@@ -47,6 +47,96 @@ PATTERN_LIBRARY = {
         "common_errors": ["slow sorting", "timeout on large arrays"],
         "learning_intent": "Understanding sorting algorithm complexities and choosing the right one"
     },
+    "bubble_sort": {
+        "name": "Bubble Sort Algorithm",
+        "pattern_type": "PRIMARY",
+        "task_type": "sorting",
+        "description": "Bubble sort O(n²) - inefficient for large datasets, nested loops comparing adjacent elements",
+        "keywords": ["bubble sort", "bubble", "adjacent", "swap", "nested loop", "O(n²)"],
+        "common_errors": ["timeout", "slow on large arrays", "inefficient"],
+        "learning_intent": "Understanding why bubble sort is inefficient and when to use better algorithms"
+    },
+    "quick_sort": {
+        "name": "Quick Sort Algorithm",
+        "pattern_type": "PRIMARY",
+        "task_type": "sorting",
+        "description": "Quick sort O(n log n) average case - divide and conquer with pivot element",
+        "keywords": ["quicksort", "quick sort", "pivot", "partition", "divide and conquer"],
+        "common_errors": ["worst case O(n²)", "pivot selection", "stack overflow on sorted arrays"],
+        "learning_intent": "Understanding quick sort implementation and pivot selection strategies"
+    },
+    "merge_sort": {
+        "name": "Merge Sort Algorithm",
+        "pattern_type": "PRIMARY",
+        "task_type": "sorting",
+        "description": "Merge sort O(n log n) - stable divide and conquer algorithm",
+        "keywords": ["mergesort", "merge sort", "divide", "merge", "recursion"],
+        "common_errors": ["space complexity O(n)", "recursion depth", "merge step errors"],
+        "learning_intent": "Understanding merge sort's stability and space-time tradeoffs"
+    },
+    "insertion_sort": {
+        "name": "Insertion Sort Algorithm",
+        "pattern_type": "PRIMARY",
+        "task_type": "sorting",
+        "description": "Insertion sort O(n²) - builds sorted array one element at a time",
+        "keywords": ["insertion sort", "insert", "shifting", "sorted portion"],
+        "common_errors": ["inefficient for large arrays", "wrong insertion position"],
+        "learning_intent": "Understanding when insertion sort is appropriate (small arrays, nearly sorted data)"
+    },
+    "server_down_error": {
+        "name": "Server/Database Connection Error",
+        "pattern_type": "PRIMARY",
+        "task_type": "infrastructure",
+        "description": "Server is down, database connection failed, or network errors",
+        "keywords": ["server down", "connection refused", "ECONNREFUSED", "database error", "500 error", "connection timeout", "network error"],
+        "common_errors": ["ECONNREFUSED", "Connection refused", "Server unreachable", "Database connection failed", "500 Internal Server Error"],
+        "learning_intent": "Understanding server infrastructure, connection handling, and error recovery"
+    },
+    "singleton_pattern": {
+        "name": "Singleton Design Pattern",
+        "pattern_type": "PRIMARY",
+        "task_type": "design_pattern",
+        "description": "Singleton pattern - ensuring only one instance of a class exists",
+        "keywords": ["singleton", "single instance", "private constructor", "getInstance", "static instance"],
+        "common_errors": ["multiple instances", "thread safety", "lazy initialization", "double-checked locking"],
+        "learning_intent": "Understanding singleton pattern implementation and thread safety considerations"
+    },
+    "factory_pattern": {
+        "name": "Factory Design Pattern",
+        "pattern_type": "PRIMARY",
+        "task_type": "design_pattern",
+        "description": "Factory pattern - creating objects without specifying exact classes",
+        "keywords": ["factory", "factory method", "create", "object creation", "abstract factory"],
+        "common_errors": ["wrong object type", "coupling issues", "complex factory hierarchies"],
+        "learning_intent": "Understanding factory pattern for flexible object creation"
+    },
+    "observer_pattern": {
+        "name": "Observer Design Pattern",
+        "pattern_type": "PRIMARY",
+        "task_type": "design_pattern",
+        "description": "Observer pattern - subject notifies observers of state changes",
+        "keywords": ["observer", "publish-subscribe", "notify", "subscribe", "event listener", "callback"],
+        "common_errors": ["memory leaks", "circular references", "unsubscribing", "notification order"],
+        "learning_intent": "Understanding observer pattern for event-driven architectures"
+    },
+    "adapter_pattern": {
+        "name": "Adapter Design Pattern",
+        "pattern_type": "PRIMARY",
+        "task_type": "design_pattern",
+        "description": "Adapter pattern - allows incompatible interfaces to work together",
+        "keywords": ["adapter", "wrapper", "interface", "compatibility", "legacy code"],
+        "common_errors": ["interface mismatch", "wrapper errors", "incomplete adaptation"],
+        "learning_intent": "Understanding adapter pattern for interface compatibility"
+    },
+    "strategy_pattern": {
+        "name": "Strategy Design Pattern",
+        "pattern_type": "PRIMARY",
+        "task_type": "design_pattern",
+        "description": "Strategy pattern - defines family of algorithms, makes them interchangeable",
+        "keywords": ["strategy", "algorithm selection", "interchangeable", "policy"],
+        "common_errors": ["wrong strategy selection", "strategy context coupling"],
+        "learning_intent": "Understanding strategy pattern for algorithm selection"
+    },
     "api_lifecycle_misuse": {
         "name": "API Lifecycle Misuse",
         "description": "Incorrect use of API lifecycle methods (React, Flask, FastAPI, etc.)",
@@ -162,7 +252,7 @@ def detect_pattern(code: Optional[str], error_message: str, user_message: str) -
     
     prompt = f"""You are a Code Pattern Intelligence System for a Final Year Project.
 
-Your task is to identify the CATEGORY of coding problem, not just explain the code.
+Your task is to identify the SPECIFIC CATEGORY of coding problem from the code and error message.
 
 **Available Patterns:**
 {pattern_names}
@@ -171,14 +261,19 @@ Your task is to identify the CATEGORY of coding problem, not just explain the co
 {context}
 
 **Instructions:**
-1. Analyze the PATTERN behind the problem, ignore surface syntax
-2. Return ONLY the pattern key from the list above (e.g., "async_await_misuse")
+1. Analyze the code to identify the SPECIFIC algorithm type, design pattern, or error category
+   - If sorting: identify if it's bubble_sort, quick_sort, merge_sort, or insertion_sort
+   - If design pattern: identify singleton_pattern, factory_pattern, observer_pattern, adapter_pattern, or strategy_pattern
+   - If server error: identify server_down_error
+   - Be SPECIFIC, not generic
+2. Return ONLY the exact pattern key from the list above (e.g., "bubble_sort" not "sorting_algorithm_issue")
 3. On the next line, return a confidence score (0-100)
 4. Format: pattern_key\\nconfidence_score
 
-**Example Output:**
-async_await_misuse
-85
+**Examples:**
+If code shows nested loops comparing adjacent elements and swapping → "bubble_sort"
+If error shows "ECONNREFUSED" or "Server unreachable" → "server_down_error"
+If code uses getInstance() with private constructor → "singleton_pattern"
 
 **Your Response:**"""
 

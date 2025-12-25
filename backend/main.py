@@ -1,7 +1,7 @@
 import sys, os, uuid, re
 from enum import Enum
 from typing import List, Optional, Dict
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -16,7 +16,7 @@ import database
 # ---------------- LOCAL MODULES ----------------
 import video_compile, youtube_download
 import auth
-from config import OPENAI_API_KEY, YOUTUBE_API_KEY
+from config import OPENAI_API_KEY, YOUTUBE_API_KEY, ALLOWED_ORIGINS
 import pattern_detector
 import knowledge_search
 import debug_analyzer
@@ -26,12 +26,30 @@ OPENAI_CLIENT = OpenAI(api_key=OPENAI_API_KEY)
 
 import whisper
 from googleapiclient.discovery import build
+import logging
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # ---------------- APP ----------------
 # Initialize DB
 database.init_db()
 
 app = FastAPI()
+
+# ---------------- CACHED MODELS ----------------
+# Cache Whisper model to avoid reloading on each request
+_whisper_model_cache = None
+
+def get_whisper_model():
+    """Get cached Whisper model or load it if not cached"""
+    global _whisper_model_cache
+    if _whisper_model_cache is None:
+        logger.info("Loading Whisper model (first time)...")
+        _whisper_model_cache = whisper.load_model("base")
+        logger.info("Whisper model loaded and cached")
+    return _whisper_model_cache
 
 @app.get("/api/health")
 def health():
@@ -45,7 +63,7 @@ def health():
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -191,36 +209,65 @@ async def search_youtube(query: str):
 
 # ---------------- VIDEO TASK ----------------
 async def process_video_task(task_id, url, goal):
+    """Process video task with optimized performance"""
     try:
-        tasks[task_id] = {"status": TaskStatus.DOWNLOADING}
+        logger.info(f"Starting video processing task: {task_id}")
+        
+        # Step 1: Download video
+        tasks[task_id] = {"status": TaskStatus.DOWNLOADING, "progress": 0}
         video_path = os.path.join(DATA_DIR, f"{task_id}.mp4")
         real_path = youtube_download.download_youtube_video(url, video_path)
+        logger.info(f"Video downloaded: {real_path}")
 
-        tasks[task_id] = {"status": TaskStatus.TRANSCRIBING}
-        model = whisper.load_model("base")
-        result = model.transcribe(real_path)
+        # Step 2: Transcribe using cached model (MUCH FASTER)
+        tasks[task_id] = {"status": TaskStatus.TRANSCRIBING, "progress": 30}
+        model = get_whisper_model()  # Use cached model
+        logger.info("Starting transcription...")
+        result = model.transcribe(real_path, verbose=False)
+        logger.info("Transcription complete")
 
+        # Build script with timestamps
         script = "\n".join(
-            f"[{s['start']:.2f} - {s['end']:.2f}] {s['text']}" for s in result["segments"]
+            f"[{s['start']:.2f} - {s['end']:.2f}] {s['text']}" for s in result.get("segments", [])
         )
 
-        tasks[task_id] = {"status": TaskStatus.FILTERING}
-        prompt = f"Goal: {goal}\nTranscript:\n{script}\nReturn timestamps only."
-        filtered = await get_gpt4o_response(prompt)
+        # Step 3: Filter segments using GPT
+        tasks[task_id] = {"status": TaskStatus.FILTERING, "progress": 60}
+        prompt = f"""Goal: {goal}
 
+Transcript with timestamps:
+{script}
+
+Analyze the transcript and return ONLY the timestamps (in format [start - end]) for segments that directly address the goal.
+Return timestamps in chronological order.
+Format: [start_time - end_time]
+Example: [10.5 - 25.3]
+[45.2 - 60.1]"""
+        
+        filtered = await get_gpt4o_response(prompt)
+        logger.info("Segment filtering complete")
+
+        # Parse segments
         segments = parse_segments(filtered or "")
         if not segments:
-            raise Exception("No segments found")
+            raise Exception("No relevant segments found for the goal")
 
-        tasks[task_id] = {"status": TaskStatus.COMPILING}
+        # Step 4: Compile video
+        tasks[task_id] = {"status": TaskStatus.COMPILING, "progress": 80}
         output = os.path.join(OUTPUT_DIR, f"{task_id}.mp4")
         video_compile.makeVideo(segments, real_path, output)
+        logger.info(f"Video compilation complete: {output}")
 
-        tasks[task_id] = {"status": TaskStatus.COMPLETED, "output_path": output}
+        tasks[task_id] = {
+            "status": TaskStatus.COMPLETED, 
+            "output_path": output,
+            "progress": 100,
+            "segments_count": len(segments)
+        }
 
     except Exception as e:
-        tasks[task_id] = {"status": TaskStatus.FAILED, "error": str(e)}
-        print("PROCESS ERROR:", e)
+        logger.error(f"Video processing error for task {task_id}: {e}", exc_info=True)
+        tasks[task_id] = {"status": TaskStatus.FAILED, "error": str(e), "progress": 0}
 
 # ---------------- AUTH ROUTES ----------------
 @app.post("/api/auth/register")
@@ -249,10 +296,11 @@ async def me(user=Depends(auth.get_current_user)):
 @app.post("/api/process")
 async def process(req: ProcessRequest, bg: BackgroundTasks, user=Depends(auth.get_current_user)):
     task_id = str(uuid.uuid4())
-    tasks[task_id] = {"status": TaskStatus.PENDING}
+    tasks[task_id] = {"status": TaskStatus.PENDING, "progress": 0}
     url = f"https://youtube.com/watch?v={req.video_id}"
     bg.add_task(process_video_task, task_id, url, req.goal)
-    return {"task_id": task_id}
+    logger.info(f"Video processing task created: {task_id} for video: {req.video_id}")
+    return {"task_id": task_id, "status": "pending"}
 
 @app.get("/api/status/{task_id}")
 async def status(task_id: str, user=Depends(auth.get_current_user)):
@@ -266,6 +314,81 @@ async def video(task_id: str, user=Depends(auth.get_current_user)):
     if not task or task["status"] != TaskStatus.COMPLETED:
         raise HTTPException(400, "Not ready")
     return FileResponse(task["output_path"], media_type="video/mp4")
+
+
+@app.post("/api/transcribe/local")
+async def transcribe_local_video(file: UploadFile = File(...), user=Depends(auth.get_current_user)):
+    """
+    Transcribe a locally uploaded video file.
+    Accepts video file upload and returns transcript with timestamps.
+    Max file size: 500MB
+    """
+    import tempfile
+    import shutil
+    
+    # Validate file type
+    if not file.content_type or not file.content_type.startswith('video/'):
+        raise HTTPException(400, "File must be a video")
+    
+    # File size limit: 500MB (for transcription)
+    MAX_FILE_SIZE = 500 * 1024 * 1024  # 500MB
+    
+    # Save uploaded file temporarily with size checking
+    temp_path = None
+    file_size = 0
+    try:
+        # Read file content first to check size
+        content = await file.read()
+        file_size = len(content)
+        
+        if file_size > MAX_FILE_SIZE:
+            raise HTTPException(400, f"File too large. Maximum size is {MAX_FILE_SIZE / (1024*1024):.0f}MB")
+        
+        # Write to temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp_file:
+            temp_path = tmp_file.name
+            tmp_file.write(content)
+        
+        logger.info(f"Transcribing local video: {file.filename}")
+        
+        # Use cached Whisper model
+        model = get_whisper_model()
+        result = model.transcribe(temp_path, verbose=False)
+        
+        # Format transcript with timestamps
+        transcript_segments = [
+            {
+                "start": seg["start"],
+                "end": seg["end"],
+                "text": seg["text"].strip(),
+                "timestamp": f"[{seg['start']:.2f} - {seg['end']:.2f}]"
+            }
+            for seg in result.get("segments", [])
+        ]
+        
+        full_transcript = "\n".join(
+            f"[{seg['start']:.2f} - {seg['end']:.2f}] {seg['text']}" 
+            for seg in result.get("segments", [])
+        )
+        
+        return {
+            "filename": file.filename,
+            "segments": transcript_segments,
+            "full_transcript": full_transcript,
+            "duration": result.get("duration", 0),
+            "language": result.get("language", "unknown")
+        }
+        
+    except Exception as e:
+        logger.error(f"Transcription error: {e}", exc_info=True)
+        raise HTTPException(500, f"Transcription failed: {str(e)}")
+    finally:
+        # Clean up temporary file
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.unlink(temp_path)
+            except:
+                pass
 
 
 

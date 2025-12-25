@@ -17,4 +17,19 @@ HOST = "0.0.0.0"
 PORT = 8000
 
 # Auth configuration
-SECRET_KEY = os.getenv("SECRET_KEY", "CHANGE_ME_IN_PRODUCTION_SECRET_KEY")
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    # In production, fail if SECRET_KEY is not set
+    if os.getenv("ENVIRONMENT") == "production":
+        raise ValueError("SECRET_KEY environment variable is required in production")
+    # Development fallback (not secure, but allows local development)
+    SECRET_KEY = "DEV_SECRET_KEY_CHANGE_IN_PRODUCTION"
+    import warnings
+    warnings.warn("Using default SECRET_KEY. Set SECRET_KEY environment variable in production!")
+
+# CORS configuration
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+# In production, restrict CORS to specific origins
+if os.getenv("ENVIRONMENT") == "production" and "*" in ALLOWED_ORIGINS:
+    import warnings
+    warnings.warn("CORS allows all origins in production. Set ALLOWED_ORIGINS environment variable!")

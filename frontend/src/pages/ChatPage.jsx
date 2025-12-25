@@ -38,7 +38,7 @@ function ChatPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className="min-h-screen bg-[#0a0a0a] text-white">
       <div className="container mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-bold text-purple-400">Code Assistant</h1>
@@ -79,7 +79,7 @@ function ChatPage() {
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   placeholder="Describe your coding problem or paste an error message..."
-                  className="w-full px-4 py-3 rounded-xl bg-gray-800 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 min-h-[100px]"
+                  className="w-full px-4 py-3 rounded-xl bg-[#1a1a1a] text-white placeholder-gray-400 border border-[#2a2a2a] focus:outline-none focus:ring-2 focus:ring-purple-600 focus:border-purple-600 min-h-[100px] transition"
                   rows="4"
                 />
               </div>
@@ -92,7 +92,7 @@ function ChatPage() {
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
                   placeholder="Paste your code here for analysis..."
-                  className="w-full px-4 py-3 rounded-xl bg-gray-800 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono text-sm min-h-[200px]"
+                  className="w-full px-4 py-3 rounded-xl bg-[#1a1a1a] text-white placeholder-gray-400 border border-[#2a2a2a] focus:outline-none focus:ring-2 focus:ring-purple-600 focus:border-purple-600 font-mono text-sm min-h-[200px] transition"
                   rows="10"
                 />
               </div>
@@ -145,7 +145,7 @@ function ChatPage() {
               </div>
 
               {/* Pattern Explanation */}
-              <div className="bg-gray-800 rounded-xl p-6">
+              <div className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-6">
                 <h2 className="text-xl font-bold text-purple-400 mb-4">💡 Why This Pattern Fails</h2>
                 <div className="prose prose-invert max-w-none">
                   <p className="text-gray-300 whitespace-pre-wrap">{response.primary_pattern_explanation || response.pattern_explanation}</p>
@@ -175,7 +175,7 @@ function ChatPage() {
 
               {/* Corrected Code */}
               {response.corrected_code && (
-                <div className="bg-gray-800 rounded-xl p-6">
+                <div className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-6">
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-xl font-bold text-purple-400">Corrected Code</h2>
                     <button
@@ -185,7 +185,7 @@ function ChatPage() {
                       Copy Code
                     </button>
                   </div>
-                  <pre className="bg-gray-900 p-4 rounded-lg overflow-x-auto">
+                  <pre className="bg-[#0a0a0a] border border-[#2a2a2a] p-4 rounded-lg overflow-x-auto">
                     <code className="text-sm text-gray-100">{response.corrected_code}</code>
                   </pre>
                 </div>
@@ -193,7 +193,7 @@ function ChatPage() {
 
               {/* GitHub Repositories */}
               {response.github_repos && response.github_repos.length > 0 && (
-                <div className="bg-gray-800 rounded-xl p-6">
+                <div className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-6">
                   <h2 className="text-xl font-bold text-purple-400 mb-4">🔗 GitHub Repositories</h2>
                   <div className="space-y-3">
                     {response.github_repos.map((repo, index) => (
@@ -202,7 +202,7 @@ function ChatPage() {
                         href={repo.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="block bg-gray-900 p-4 rounded-lg hover:bg-gray-700 transition"
+                        className="block bg-[#1a1a1a] border border-[#2a2a2a] p-4 rounded-lg hover:bg-[#252525] hover:border-purple-600/50 transition"
                       >
                         <div className="flex items-center justify-between">
                           <div>
@@ -271,11 +271,11 @@ function ChatPage() {
 
               {/* Video Segments with Transcript Display */}
               {response.video_segments && response.video_segments.length > 0 && (
-                <div className="bg-gray-800 rounded-xl p-6">
+                <div className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-6">
                   <h2 className="text-xl font-bold text-purple-400 mb-4">🎥 Pattern-Specific Videos + Transcripts</h2>
                   <div className="space-y-4">
                     {response.video_segments.map((video, index) => (
-                      <div key={index} className="bg-gray-900 rounded-lg p-4">
+                      <div key={index} className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-4">
                         <div className="flex gap-4">
                           <a href={video.url} target="_blank" rel="noopener noreferrer" className="shrink-0">
                             {video.thumbnail && (
@@ -302,7 +302,7 @@ function ChatPage() {
                             <summary className="cursor-pointer text-sm text-blue-400 hover:text-blue-300 font-semibold">
                               📜 View Transcript (Solution Highlighted ⭐)
                             </summary>
-                            <div className="mt-3 p-4 bg-gray-800 rounded border border-gray-700 max-h-64 overflow-y-auto">
+                            <div className="mt-3 p-4 bg-[#0a0a0a] rounded border border-[#2a2a2a] max-h-64 overflow-y-auto">
                               <div className="text-xs font-mono whitespace-pre-wrap leading-relaxed">
                                 {video.highlighted_portion.split('\n').map((line, i) => {
                                   const isBold = line.includes('**');

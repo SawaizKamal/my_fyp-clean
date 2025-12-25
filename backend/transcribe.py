@@ -6,10 +6,9 @@ import video_compile
 import re
 
 
-# Use your API key (ensure you use environment variables in production)
-client = OpenAI(api_key="sk-proj-JfOgEyCOIHFaeFRFIHXFX7LEG7mbUCnQ0jvH0ikU"
-                               "-MWQkOp9GNLBkXbFivsGmcyF1TDiw1x8FpT3BlbkFJ4E5QhN7JLbzFFwcCmY4bsqFHhdb7FHh"
-                               "-TbXqKR9ilUVEMzUF9JMji-zgVpruGJ8xYmb5JTqvEA")
+# Use environment variable for API key
+from config import OPENAI_API_KEY
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 # Your async GPT-4o filter function
 async def get_gpt4o_mini_response(prompt: str) -> str:
