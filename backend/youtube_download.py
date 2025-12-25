@@ -22,13 +22,35 @@ def download_youtube_video(url: str, output_path: str = "data/video.mp4") -> str
     # Ensure output directory exists
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     
-    # yt-dlp options
+    # yt-dlp options with anti-bot detection measures
     ydl_opts = {
         'format': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
         'outtmpl': output_path,
         'quiet': False,
         'no_warnings': False,
         'extract_flat': False,
+        # Anti-bot detection measures
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'referer': 'https://www.youtube.com/',
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'web'],  # Try android client first (less bot detection)
+                'player_skip': ['webpage', 'configs'],
+            }
+        },
+        # Retry options
+        'retries': 3,
+        'fragment_retries': 3,
+        'ignoreerrors': False,
+        # Additional headers to appear more like a browser
+        'http_headers': {
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-us,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.7',
+            'Keep-Alive': '300',
+            'Connection': 'keep-alive',
+        },
     }
     
     try:

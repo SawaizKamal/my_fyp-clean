@@ -54,7 +54,15 @@ function VideoPlayerPage() {
   }, [transcript]);
 
   const jumpToTimestamp = (startTime) => {
-    if (videoRef.current) {
+    if (transcript.video_unavailable && transcript.youtube_embed_url) {
+      // For YouTube embed, update the iframe src with timestamp
+      const iframe = document.getElementById('youtube-player-iframe');
+      if (iframe) {
+        const baseUrl = transcript.youtube_embed_url.split('?')[0];
+        const timestamp = Math.floor(startTime);
+        iframe.src = `${baseUrl}?start=${timestamp}&autoplay=1`;
+      }
+    } else if (videoRef.current) {
       videoRef.current.currentTime = startTime;
       videoRef.current.play();
     }
@@ -71,6 +79,10 @@ function VideoPlayerPage() {
   };
 
   const isCurrentSegment = (segment) => {
+    // For YouTube embed, we can't track current time, so disable highlighting
+    if (transcript.video_unavailable) {
+      return false;
+    }
     return currentTime >= segment.start && currentTime <= segment.end;
   };
 
@@ -135,21 +147,49 @@ function VideoPlayerPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Video Player - Takes 2/3 of the width */}
           <div className="lg:col-span-2">
-            <div className="bg-black rounded-xl overflow-hidden mb-4">
-              <video
-                ref={videoRef}
-                controls
-                className="w-full"
-                src={`/api/video/stream/${videoId}`}
-                onLoadedMetadata={() => {
-                  if (videoRef.current) {
-                    videoRef.current.currentTime = 0;
-                  }
-                }}
-              >
-                Your browser does not support the video tag.
-              </video>
-            </div>
+            {transcript.video_unavailable ? (
+              <div className="bg-black rounded-xl overflow-hidden mb-4">
+                <div className="bg-yellow-600 bg-opacity-20 border border-yellow-500 rounded-lg p-4 mb-4">
+                  <p className="text-yellow-300 text-sm">
+                    ⚠️ Video download unavailable due to YouTube restrictions. Showing YouTube embed player instead.
+                  </p>
+                  <p className="text-yellow-400 text-xs mt-1">
+                    {transcript.video_unavailable_reason}
+                  </p>
+                </div>
+                {transcript.youtube_embed_url && (
+                  <div className="bg-black rounded-lg overflow-hidden">
+                    <iframe
+                      id="youtube-player-iframe"
+                      width="100%"
+                      height="500"
+                      src={transcript.youtube_embed_url}
+                      title="YouTube video player"
+                      frameBorder="0"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                      className="w-full"
+                    ></iframe>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="bg-black rounded-xl overflow-hidden mb-4">
+                <video
+                  ref={videoRef}
+                  controls
+                  className="w-full"
+                  src={transcript.video_url || `/api/video/stream/${videoId}`}
+                  onLoadedMetadata={() => {
+                    if (videoRef.current) {
+                      videoRef.current.currentTime = 0;
+                    }
+                  }}
+                >
+                  Your browser does not support the video tag.
+                </video>
+              </div>
+            )}
 
             {/* Video Info */}
             <div className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-4 mb-4">

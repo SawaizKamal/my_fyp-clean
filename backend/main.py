@@ -471,8 +471,105 @@ async def transcribe_youtube_video(video_id: str, user=Depends(auth.get_current_
         if not video_path:
             video_path = base_path + '.mp4'  # Default extension
             logger.info(f"Downloading video: {video_id}")
-            downloaded_path = youtube_download.download_youtube_video(video_url, video_path)
-            video_path = downloaded_path  # Use the actual downloaded path
+            try:
+                downloaded_path = youtube_download.download_youtube_video(video_url, video_path)
+                video_path = downloaded_path  # Use the actual downloaded path
+            except Exception as download_error:
+                error_msg = str(download_error)
+                logger.error(f"Video download failed: {error_msg}")
+                
+                # If download fails due to bot detection, try to use YouTube transcript API as fallback
+                if "bot" in error_msg.lower() or "cookies" in error_msg.lower() or "sign in" in error_msg.lower():
+                    logger.info("Attempting to use YouTube Transcript API as fallback...")
+                    transcript_data = video_transcript_analyzer.get_video_transcript(video_url)
+                    
+                    if transcript_data:
+                        # Convert YouTube transcript format to our format
+                        transcript_segments = []
+                        full_transcript_lines = []
+                        
+                        for seg in transcript_data:
+                            start = seg.get('start', 0)
+                            duration = seg.get('duration', 0)
+                            end = start + duration
+                            text = seg.get('text', '').strip()
+                            
+                            transcript_segments.append({
+                                "start": start,
+                                "end": end,
+                                "text": text,
+                                "timestamp": f"{int(start // 60)}:{int(start % 60):02d}"
+                            })
+                            
+                            full_transcript_lines.append(f"[{int(start // 60)}:{int(start % 60):02d}] {text}")
+                        
+                        full_transcript = "\n".join(full_transcript_lines)
+                        
+                        # Use OpenAI to identify solution segments
+                        logger.info("Identifying solution segments with OpenAI...")
+                        solution_prompt = f"""Analyze this video transcript and identify segments that contain solutions, explanations, or key teaching moments.
+
+Transcript:
+{full_transcript}
+
+Return a JSON array of segment indices (0-based) that contain solutions or key explanations. Focus on segments that:
+1. Explain how to solve problems
+2. Show code implementations
+3. Provide step-by-step instructions
+4. Explain concepts clearly
+5. Give practical examples
+
+Skip segments that are:
+- Introductions or greetings
+- Filler words or pauses
+- Off-topic discussions
+- Outros or sign-offs
+
+Return ONLY a JSON array like: [0, 5, 12, 23] or [] if no clear solutions found.
+Do not include any other text, just the JSON array."""
+                        
+                        try:
+                            solution_response = await get_gpt4o_response(solution_prompt)
+                            import json
+                            import re
+                            
+                            json_match = re.search(r'\[[\d,\s]*\]', solution_response or "")
+                            if json_match:
+                                solution_indices = json.loads(json_match.group())
+                            else:
+                                try:
+                                    solution_indices = json.loads(solution_response)
+                                except:
+                                    solution_indices = []
+                            
+                            if not isinstance(solution_indices, list):
+                                solution_indices = []
+                            solution_indices = [int(i) for i in solution_indices if isinstance(i, (int, str)) and str(i).isdigit()]
+                            solution_indices = [i for i in solution_indices if 0 <= i < len(transcript_segments)]
+                        except Exception as e:
+                            logger.warning(f"Failed to identify solution segments: {e}")
+                            solution_indices = []
+                        
+                        # Return transcript-only response (video unavailable)
+                        return {
+                            "video_id": video_id,
+                            "video_url": None,  # Video unavailable
+                            "video_unavailable": True,
+                            "video_unavailable_reason": "YouTube bot detection - video download blocked. Using transcript only.",
+                            "youtube_embed_url": f"https://www.youtube.com/embed/{video_id}",
+                            "segments": transcript_segments,
+                            "solution_segments": solution_indices,
+                            "full_transcript": full_transcript,
+                            "duration": transcript_data[-1].get('start', 0) + transcript_data[-1].get('duration', 0) if transcript_data else 0,
+                            "language": "unknown",
+                            "total_segments": len(transcript_segments)
+                        }
+                
+                # If no fallback available, raise the original error
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"Video download failed: {error_msg}. YouTube may be blocking automated downloads. Please try again later or use a different video."
+                )
         
         # Step 2: Transcribe with Whisper
         logger.info("Transcribing video with Whisper...")
