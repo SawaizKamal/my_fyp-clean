@@ -5,7 +5,10 @@ import api from '../api/config';
 
 function VideoUploadPage() {
   const navigate = useNavigate();
-  const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const { user, isAuthenticated, loading: authLoading, token } = useAuth();
+  // #region agent log
+  fetch('http://127.0.0.1:7243/ingest/437f7cb7-d9e7-437e-82fe-e00f0e39dcc2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VideoUploadPage.jsx:9',message:'Component initialized',data:{hasUser:!!user,isAuthenticated,hasToken:!!token,authLoading},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  // #endregion
   const fileInputRef = useRef(null);
   const videoRef = useRef(null);
   const [file, setFile] = useState(null);
@@ -88,6 +91,9 @@ function VideoUploadPage() {
         formData.append('user_query', userQuery.trim());
       }
       
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/437f7cb7-d9e7-437e-82fe-e00f0e39dcc2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VideoUploadPage.jsx:91',message:'Before API call',data:{hasToken:!!token,isAuthenticated,fileSelected:!!file,hasUserQuery:!!userQuery.trim()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       console.log('Uploading video with token:', token ? 'Present' : 'Missing');
 
       // Simulate progress updates (since we can't get real-time progress from Whisper)
