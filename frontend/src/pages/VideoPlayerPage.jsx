@@ -8,11 +8,94 @@ function VideoPlayerPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const videoRef = useRef(null);
+  const youtubePlayerRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [transcript, setTranscript] = useState(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [highlightedSegment, setHighlightedSegment] = useState(null);
+  const [youtubeApiReady, setYoutubeApiReady] = useState(false);
+
+  // Initialize YouTube IFrame API
+  useEffect(() => {
+    // Check if YouTube IFrame API is already loaded
+    if (window.YT && window.YT.Player) {
+      setYoutubeApiReady(true);
+      return;
+    }
+
+    // Wait for YouTube IFrame API to load
+    const checkYoutubeAPI = setInterval(() => {
+      if (window.YT && window.YT.Player) {
+        setYoutubeApiReady(true);
+        clearInterval(checkYoutubeAPI);
+      }
+    }, 100);
+
+    // Set up global callback for YouTube API
+    window.onYouTubeIframeAPIReady = () => {
+      setYoutubeApiReady(true);
+      clearInterval(checkYoutubeAPI);
+    };
+
+    return () => {
+      clearInterval(checkYoutubeAPI);
+      delete window.onYouTubeIframeAPIReady;
+    };
+  }, []);
+
+  // Initialize YouTube player when API is ready and transcript is loaded
+  useEffect(() => {
+    if (!youtubeApiReady || !transcript || !transcript.video_unavailable || !transcript.youtube_embed_url) {
+      return;
+    }
+
+    const videoIdFromUrl = transcript.youtube_embed_url.match(/embed\/([^?]+)/)?.[1] || videoId;
+    
+    if (videoIdFromUrl && window.YT && window.YT.Player) {
+      // Destroy existing player if any
+      if (youtubePlayerRef.current) {
+        try {
+          youtubePlayerRef.current.destroy();
+        } catch (e) {
+          console.log('Error destroying previous player:', e);
+        }
+      }
+
+      // Create new YouTube player
+      youtubePlayerRef.current = new window.YT.Player('youtube-player-iframe', {
+        videoId: videoIdFromUrl,
+        playerVars: {
+          autoplay: 0,
+          controls: 1,
+          enablejsapi: 1,
+          origin: window.location.origin,
+        },
+        events: {
+          onReady: (event) => {
+            console.log('YouTube player ready');
+          },
+          onStateChange: (event) => {
+            // Track video state changes if needed
+          },
+          onError: (event) => {
+            console.error('YouTube player error:', event.data);
+          }
+        }
+      });
+    }
+
+    return () => {
+      if (youtubePlayerRef.current) {
+        try {
+          youtubePlayerRef.current.destroy();
+        } catch (e) {
+          console.log('Error destroying player on cleanup:', e);
+        }
+        youtubePlayerRef.current = null;
+      }
+    };
+  }, [youtubeApiReady, transcript, videoId]);
 
   useEffect(() => {
     if (!videoId) {
@@ -67,12 +150,30 @@ function VideoPlayerPage() {
 
   const jumpToTimestamp = (startTime) => {
     if (transcript.video_unavailable && transcript.youtube_embed_url) {
-      // For YouTube embed, update the iframe src with timestamp
-      const iframe = document.getElementById('youtube-player-iframe');
-      if (iframe) {
-        const baseUrl = transcript.youtube_embed_url.split('?')[0];
-        const timestamp = Math.floor(startTime);
-        iframe.src = `${baseUrl}?start=${timestamp}&autoplay=1`;
+      // Use YouTube IFrame API if available for better control
+      if (youtubePlayerRef.current && youtubeApiReady) {
+        try {
+          youtubePlayerRef.current.seekTo(startTime, true);
+          youtubePlayerRef.current.playVideo();
+        } catch (e) {
+          console.error('Error seeking with YouTube API:', e);
+          // Fallback to iframe src method
+          const iframe = document.getElementById('youtube-player-iframe');
+          if (iframe) {
+            const baseUrl = transcript.youtube_embed_url.split('?')[0];
+            const timestamp = Math.floor(startTime);
+            iframe.src = `${baseUrl}?start=${timestamp}&autoplay=1&enablejsapi=1`;
+          }
+        }
+      } else {
+        // Fallback: update iframe src with timestamp
+        const iframe = document.getElementById('youtube-player-iframe');
+        if (iframe) {
+          const baseUrl = transcript.youtube_embed_url.split('?')[0];
+          const timestamp = Math.floor(startTime);
+          const newUrl = `${baseUrl}?start=${timestamp}&autoplay=1&enablejsapi=1`;
+          iframe.src = newUrl;
+        }
       }
     } else if (videoRef.current) {
       videoRef.current.currentTime = startTime;
@@ -91,12 +192,40 @@ function VideoPlayerPage() {
   };
 
   const isCurrentSegment = (segment) => {
-    // For YouTube embed, we can't track current time, so disable highlighting
+    // For YouTube embed, try to get current time from player if API is available
     if (transcript.video_unavailable) {
+      if (youtubePlayerRef.current && youtubeApiReady) {
+        try {
+          const ytCurrentTime = youtubePlayerRef.current.getCurrentTime();
+          return ytCurrentTime >= segment.start && ytCurrentTime <= segment.end;
+        } catch (e) {
+          return false;
+        }
+      }
       return false;
     }
     return currentTime >= segment.start && currentTime <= segment.end;
   };
+
+  // Update current time from YouTube player if available
+  useEffect(() => {
+    if (!transcript?.video_unavailable || !youtubePlayerRef.current || !youtubeApiReady) {
+      return;
+    }
+
+    const updateYouTubeTime = setInterval(() => {
+      try {
+        if (youtubePlayerRef.current) {
+          const ytTime = youtubePlayerRef.current.getCurrentTime();
+          setCurrentTime(ytTime);
+        }
+      } catch (e) {
+        // Player might not be ready yet
+      }
+    }, 500); // Update every 500ms
+
+    return () => clearInterval(updateYouTubeTime);
+  }, [transcript?.video_unavailable, youtubeApiReady]);
 
   if (loading) {
     return (
@@ -116,13 +245,32 @@ function VideoPlayerPage() {
         <div className="container mx-auto px-4 py-8">
           <button
             onClick={() => navigate('/chat')}
-            className="text-gray-400 hover:text-white mb-6"
+            className="text-gray-400 hover:text-white mb-6 flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-gray-800 transition"
           >
             ← Back to Chat
           </button>
           <div className="bg-red-500 bg-opacity-20 border border-red-500 rounded-xl p-8 max-w-2xl mx-auto">
-            <h2 className="text-2xl font-bold text-red-400 mb-4">Error</h2>
-            <p className="text-gray-300">{error}</p>
+            <h2 className="text-2xl font-bold text-red-400 mb-4 flex items-center gap-2">
+              <span>⚠️</span> Error Loading Transcription
+            </h2>
+            <p className="text-gray-300 mb-4">{error}</p>
+            <div className="bg-yellow-500 bg-opacity-10 border border-yellow-500 rounded-lg p-4 mb-4">
+              <p className="text-yellow-300 text-sm">
+                <strong>Possible solutions:</strong>
+              </p>
+              <ul className="list-disc list-inside text-yellow-200 text-sm mt-2 space-y-1">
+                <li>Try again in a few moments (YouTube may be temporarily blocking requests)</li>
+                <li>Check if the video has captions/transcripts enabled</li>
+                <li>Try a different video</li>
+                <li>Watch the video directly on YouTube if transcription is unavailable</li>
+              </ul>
+            </div>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-6 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold transition"
+            >
+              Retry
+            </button>
           </div>
         </div>
       </div>
@@ -181,7 +329,11 @@ function VideoPlayerPage() {
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                       allowFullScreen
                       className="w-full"
+                      allow="autoplay"
                     ></iframe>
+                    <p className="text-xs text-gray-500 mt-2 text-center">
+                      💡 Click on transcript timestamps to jump to specific moments in the video
+                    </p>
                   </div>
                 )}
               </div>
@@ -240,27 +392,43 @@ function VideoPlayerPage() {
                   return (
                     <div
                       key={index}
+                      data-segment-index={index}
                       onClick={() => jumpToTimestamp(segment.start)}
                       className={`
                         p-3 rounded-lg cursor-pointer transition-all duration-200
                         ${isCurrent 
-                          ? 'bg-purple-600 bg-opacity-30 border-2 border-purple-500' 
+                          ? 'bg-purple-600 bg-opacity-30 border-2 border-purple-500 shadow-lg shadow-purple-500/50' 
                           : 'bg-[#1a1a1a] border border-[#2a2a2a] hover:bg-[#252525] hover:border-purple-600/50'
                         }
-                        ${isSolution ? 'ring-2 ring-yellow-500 ring-opacity-50' : ''}
+                        ${isSolution ? 'ring-2 ring-yellow-500 ring-opacity-70 bg-yellow-500 bg-opacity-10' : ''}
+                        ${isSolution && isCurrent ? 'ring-4 ring-yellow-400 ring-opacity-80' : ''}
                       `}
+                      style={{
+                        transform: isCurrent ? 'scale(1.02)' : 'scale(1)',
+                      }}
                     >
                       <div className="flex items-start justify-between gap-2 mb-1">
-                        <span className="text-xs font-mono text-purple-400 font-semibold">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            jumpToTimestamp(segment.start);
+                          }}
+                          className="text-xs font-mono text-purple-400 font-semibold hover:text-purple-300 hover:underline transition-colors"
+                        >
                           {segment.timestamp}
-                        </span>
+                        </button>
                         {isSolution && (
-                          <span className="text-xs bg-yellow-500 bg-opacity-20 text-yellow-300 px-2 py-0.5 rounded">
+                          <span className="text-xs bg-yellow-500 bg-opacity-30 text-yellow-200 px-2 py-0.5 rounded font-semibold animate-pulse">
                             ⭐ Solution
                           </span>
                         )}
                       </div>
-                      <p className={`text-sm leading-relaxed ${isSolution ? 'text-yellow-200 font-medium' : 'text-gray-300'}`}>
+                      <p 
+                        className={`text-sm leading-relaxed ${isSolution ? 'text-yellow-100 font-semibold' : 'text-gray-300'}`}
+                        style={{
+                          fontWeight: isSolution ? 600 : 400,
+                        }}
+                      >
                         {segment.text}
                       </p>
                     </div>
@@ -274,17 +442,37 @@ function VideoPlayerPage() {
                   <p className="text-xs text-gray-400 mb-2">
                     💡 Click on highlighted segments (⭐) to jump to solution parts
                   </p>
-                  <button
-                    onClick={() => {
-                      const firstSolution = transcript.solution_segments[0];
-                      if (firstSolution < transcript.segments.length) {
-                        jumpToTimestamp(transcript.segments[firstSolution].start);
-                      }
-                    }}
-                    className="w-full px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded-lg text-sm font-semibold transition"
-                  >
-                    Jump to First Solution
-                  </button>
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => {
+                        const firstSolution = transcript.solution_segments[0];
+                        if (firstSolution < transcript.segments.length) {
+                          jumpToTimestamp(transcript.segments[firstSolution].start);
+                        }
+                      }}
+                      className="w-full px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded-lg text-sm font-semibold transition transform hover:scale-105"
+                    >
+                      ⭐ Jump to First Solution
+                    </button>
+                    {transcript.solution_segments.length > 1 && (
+                      <button
+                        onClick={() => {
+                          // Scroll to first solution segment in the list
+                          const firstSolutionIndex = transcript.solution_segments[0];
+                          const element = document.querySelector(`[data-segment-index="${firstSolutionIndex}"]`);
+                          if (element) {
+                            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          }
+                        }}
+                        className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm font-semibold transition transform hover:scale-105"
+                      >
+                        📍 Scroll to Solutions
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-yellow-400 mt-2 text-center">
+                    {transcript.solution_segments.length} solution segment{transcript.solution_segments.length !== 1 ? 's' : ''} found
+                  </p>
                 </div>
               )}
             </div>

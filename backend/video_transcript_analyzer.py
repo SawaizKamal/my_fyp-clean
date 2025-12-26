@@ -45,12 +45,29 @@ def check_audio_availability(video_url: str) -> Tuple[bool, Optional[str]]:
         return False, "Invalid video URL"
     
     try:
-        # Try to get transcript
-        YouTubeTranscriptApi.get_transcript(video_id)
-        return True, None
+        # Try to get transcript - first try without language code (auto-detect)
+        try:
+            YouTubeTranscriptApi.get_transcript(video_id)
+            return True, None
+        except Exception:
+            # If that fails, try to list available transcripts
+            try:
+                transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+                # Check if any transcript is available
+                for t in transcript_list:
+                    return True, None
+                return False, "No transcripts available"
+            except Exception as e2:
+                error_msg = str(e2).lower()
+                if "transcript" in error_msg or "disabled" in error_msg or "no transcript" in error_msg:
+                    return False, "Transcript unavailable - video skipped"
+                elif "video unavailable" in error_msg:
+                    return False, "Video unavailable"
+                else:
+                    return False, f"Transcript access failed: {str(e2)[:50]}"
     except Exception as e:
         error_msg = str(e).lower()
-        if "transcript" in error_msg or "disabled" in error_msg:
+        if "transcript" in error_msg or "disabled" in error_msg or "no transcript" in error_msg:
             return False, "Transcript unavailable - video skipped"
         elif "video unavailable" in error_msg:
             return False, "Video unavailable"
@@ -74,8 +91,37 @@ def get_video_transcript(video_url: str) -> Optional[List[Dict]]:
         return None
     
     try:
-        transcript = YouTubeTranscriptApi.get_transcript(video_id)
-        return transcript
+        # Try to get transcript - first try without language code (auto-detect)
+        try:
+            transcript = YouTubeTranscriptApi.get_transcript(video_id)
+            return transcript
+        except Exception:
+            # If that fails, try to get available transcripts and use the first one
+            try:
+                transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+                # Try to get manually created transcript first, then auto-generated
+                transcript = None
+                for t in transcript_list:
+                    try:
+                        transcript = t.fetch()
+                        break
+                    except:
+                        continue
+                
+                # If no manual transcript, try auto-generated
+                if not transcript:
+                    for t in transcript_list:
+                        try:
+                            transcript = t.translate('en').fetch() if hasattr(t, 'translate') else None
+                            if transcript:
+                                break
+                        except:
+                            continue
+                
+                return transcript
+            except Exception as e2:
+                print(f"❌ Transcript fetch failed for {video_id}: {e2}")
+                return None
     except Exception as e:
         print(f"❌ Transcript fetch failed for {video_id}: {e}")
         return None

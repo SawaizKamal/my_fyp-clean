@@ -519,40 +519,35 @@ async def transcribe_youtube_video(video_id: str, user=Depends(auth.get_current_
                 # #endregion
                 logger.error(f"Video download failed: {error_msg}")
                 
-                # If download fails due to bot detection, try to use YouTube transcript API as fallback
-                fallback_condition = "bot" in error_msg.lower() or "cookies" in error_msg.lower() or "sign in" in error_msg.lower()
+                # Always try to use YouTube transcript API as fallback when download fails
+                # This handles bot detection, network errors, and other download issues
+                logger.info("Attempting to use YouTube Transcript API as fallback...")
                 # #region agent log
                 log_path = os.path.join(BASE_DIR, '.cursor', 'debug.log')
                 try:
                     os.makedirs(os.path.dirname(log_path), exist_ok=True)
                     with open(log_path, 'a', encoding='utf-8') as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"F","location":"main.py:482","message":"Fallback condition check","data":{"fallback_condition":fallback_condition},"timestamp":int(time.time()*1000)})+'\n')
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"F","location":"main.py:482","message":"Fallback to transcript API","data":{"error_msg":error_msg},"timestamp":int(time.time()*1000)})+'\n')
                 except Exception as log_e:
                     logger.error(f"DEBUG LOG ERROR: {log_e}")
                 # #endregion
-                if fallback_condition:
-                    logger.info("Attempting to use YouTube Transcript API as fallback...")
-                    # #region agent log
-                    log_path = os.path.join(BASE_DIR, '.cursor', 'debug.log')
-                    try:
-                        os.makedirs(os.path.dirname(log_path), exist_ok=True)
-                        with open(log_path, 'a', encoding='utf-8') as f:
-                            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"G","location":"main.py:484","message":"Calling YouTube Transcript API","data":{"video_url":video_url},"timestamp":int(time.time()*1000)})+'\n')
-                    except Exception as log_e:
-                        logger.error(f"DEBUG LOG ERROR: {log_e}")
-                    # #endregion
+                
                     transcript_data = video_transcript_analyzer.get_video_transcript(video_url)
-                    # #region agent log
-                    log_path = os.path.join(BASE_DIR, '.cursor', 'debug.log')
-                    try:
-                        os.makedirs(os.path.dirname(log_path), exist_ok=True)
-                        with open(log_path, 'a', encoding='utf-8') as f:
-                            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"G","location":"main.py:485","message":"Transcript API response","data":{"has_transcript":transcript_data is not None,"transcript_len":len(transcript_data) if transcript_data else 0},"timestamp":int(time.time()*1000)})+'\n')
-                    except Exception as log_e:
-                        logger.error(f"DEBUG LOG ERROR: {log_e}")
-                    # #endregion
-                    
-                    if transcript_data:
+                except Exception as transcript_error:
+                    logger.error(f"YouTube Transcript API error: {transcript_error}")
+                    transcript_data = None
+                
+                # #region agent log
+                log_path = os.path.join(BASE_DIR, '.cursor', 'debug.log')
+                try:
+                    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                    with open(log_path, 'a', encoding='utf-8') as f:
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"G","location":"main.py:485","message":"Transcript API response","data":{"has_transcript":transcript_data is not None,"transcript_len":len(transcript_data) if transcript_data else 0},"timestamp":int(time.time()*1000)})+'\n')
+                except Exception as log_e:
+                    logger.error(f"DEBUG LOG ERROR: {log_e}")
+                # #endregion
+                
+                if transcript_data and len(transcript_data) > 0:
                         # Convert YouTube transcript format to our format
                         transcript_segments = []
                         full_transcript_lines = []
@@ -634,20 +629,23 @@ Do not include any other text, just the JSON array."""
                             "total_segments": len(transcript_segments)
                         }
                 
-                # If no fallback available, raise the original error
-                # #region agent log
-                log_path = os.path.join(BASE_DIR, '.cursor', 'debug.log')
-                try:
-                    os.makedirs(os.path.dirname(log_path), exist_ok=True)
-                    with open(log_path, 'a', encoding='utf-8') as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"H","location":"main.py:568","message":"Raising HTTPException - no fallback","data":{"error_msg":error_msg},"timestamp":int(time.time()*1000)})+'\n')
-                except Exception as log_e:
-                    logger.error(f"DEBUG LOG ERROR: {log_e}")
-                # #endregion
-                raise HTTPException(
-                    status_code=503,
-                    detail=f"Video download failed: {error_msg}. YouTube may be blocking automated downloads. Please try again later or use a different video."
-                )
+                # If transcript API also failed, return response with YouTube embed (no 503 error)
+                logger.warning("Both video download and transcript API failed. Returning YouTube embed player as fallback.")
+                # Always return a response with YouTube embed - never raise 503
+                return {
+                    "video_id": video_id,
+                    "video_url": None,
+                    "video_unavailable": True,
+                    "video_unavailable_reason": f"Video download failed: {error_msg[:100]}. Transcript also unavailable. Showing YouTube embed player.",
+                    "youtube_embed_url": f"https://www.youtube.com/embed/{video_id}",
+                    "segments": [],
+                    "solution_segments": [],
+                    "full_transcript": "",
+                    "duration": 0,
+                    "language": "unknown",
+                    "total_segments": 0,
+                    "error_message": f"Video download and transcript both unavailable. You can still watch the video using the embedded player above."
+                }
         
         # Step 2: Transcribe with Whisper
         logger.info("Transcribing video with Whisper...")
@@ -746,7 +744,23 @@ Do not include any other text, just the JSON array."""
         
     except Exception as e:
         logger.error(f"Video transcription error: {e}", exc_info=True)
-        raise HTTPException(500, f"Transcription failed: {str(e)}")
+        # Even on unexpected errors, try to return YouTube embed instead of error
+        # This ensures users can still watch the video
+        error_msg = str(e)
+        return {
+            "video_id": video_id,
+            "video_url": None,
+            "video_unavailable": True,
+            "video_unavailable_reason": f"Unexpected error during transcription: {error_msg[:100]}",
+            "youtube_embed_url": f"https://www.youtube.com/embed/{video_id}",
+            "segments": [],
+            "solution_segments": [],
+            "full_transcript": "",
+            "duration": 0,
+            "language": "unknown",
+            "total_segments": 0,
+            "error_message": "An error occurred during transcription. You can still watch the video using the embedded player above."
+        }
 
 
 @app.get("/api/video/stream/{video_id}")
