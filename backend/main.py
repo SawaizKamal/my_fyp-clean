@@ -447,6 +447,19 @@ async def transcribe_youtube_video(video_id: str, user=Depends(auth.get_current_
     """
     import tempfile
     import shutil
+    import json
+    import time
+    
+    # #region agent log
+    log_path = os.path.join(BASE_DIR, '.cursor', 'debug.log')
+    try:
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"ENTRY","location":"main.py:437","message":"transcribe_youtube_video endpoint called","data":{"video_id":video_id},"timestamp":int(time.time()*1000)})+'\n')
+        logger.info(f"DEBUG: Logged entry point for video_id={video_id}")
+    except Exception as log_err:
+        logger.error(f"Log write failed: {log_err}", exc_info=True)
+    # #endregion
     
     video_url = f"https://youtube.com/watch?v={video_id}"
     video_path = None
@@ -472,16 +485,72 @@ async def transcribe_youtube_video(video_id: str, user=Depends(auth.get_current_
             video_path = base_path + '.mp4'  # Default extension
             logger.info(f"Downloading video: {video_id}")
             try:
+                # #region agent log
+                log_path = os.path.join(BASE_DIR, '.cursor', 'debug.log')
+                try:
+                    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                    with open(log_path, 'a', encoding='utf-8') as f:
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"main.py:474","message":"Before download attempt","data":{"video_id":video_id,"video_url":video_url},"timestamp":int(time.time()*1000)})+'\n')
+                except Exception as log_e:
+                    logger.error(f"DEBUG LOG ERROR: {log_e}")
+                # #endregion
                 downloaded_path = youtube_download.download_youtube_video(video_url, video_path)
                 video_path = downloaded_path  # Use the actual downloaded path
+                # #region agent log
+                log_path = os.path.join(BASE_DIR, '.cursor', 'debug.log')
+                try:
+                    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                    with open(log_path, 'a', encoding='utf-8') as f:
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"main.py:476","message":"Download succeeded","data":{"video_path":video_path},"timestamp":int(time.time()*1000)})+'\n')
+                except Exception as log_e:
+                    logger.error(f"DEBUG LOG ERROR: {log_e}")
+                # #endregion
             except Exception as download_error:
                 error_msg = str(download_error)
+                # #region agent log
+                log_path = os.path.join(BASE_DIR, '.cursor', 'debug.log')
+                try:
+                    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                    with open(log_path, 'a', encoding='utf-8') as f:
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"F","location":"main.py:478","message":"Download exception caught","data":{"error_type":type(download_error).__name__,"error_msg":error_msg,"error_lower":error_msg.lower(),"has_bot":"bot" in error_msg.lower(),"has_cookies":"cookies" in error_msg.lower(),"has_signin":"sign in" in error_msg.lower()},"timestamp":int(time.time()*1000)})+'\n')
+                    logger.info(f"DEBUG: Logged download exception - {error_msg[:100]}")
+                except Exception as log_e:
+                    logger.error(f"DEBUG LOG ERROR: {log_e}")
+                # #endregion
                 logger.error(f"Video download failed: {error_msg}")
                 
                 # If download fails due to bot detection, try to use YouTube transcript API as fallback
-                if "bot" in error_msg.lower() or "cookies" in error_msg.lower() or "sign in" in error_msg.lower():
+                fallback_condition = "bot" in error_msg.lower() or "cookies" in error_msg.lower() or "sign in" in error_msg.lower()
+                # #region agent log
+                log_path = os.path.join(BASE_DIR, '.cursor', 'debug.log')
+                try:
+                    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                    with open(log_path, 'a', encoding='utf-8') as f:
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"F","location":"main.py:482","message":"Fallback condition check","data":{"fallback_condition":fallback_condition},"timestamp":int(time.time()*1000)})+'\n')
+                except Exception as log_e:
+                    logger.error(f"DEBUG LOG ERROR: {log_e}")
+                # #endregion
+                if fallback_condition:
                     logger.info("Attempting to use YouTube Transcript API as fallback...")
+                    # #region agent log
+                    log_path = os.path.join(BASE_DIR, '.cursor', 'debug.log')
+                    try:
+                        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                        with open(log_path, 'a', encoding='utf-8') as f:
+                            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"G","location":"main.py:484","message":"Calling YouTube Transcript API","data":{"video_url":video_url},"timestamp":int(time.time()*1000)})+'\n')
+                    except Exception as log_e:
+                        logger.error(f"DEBUG LOG ERROR: {log_e}")
+                    # #endregion
                     transcript_data = video_transcript_analyzer.get_video_transcript(video_url)
+                    # #region agent log
+                    log_path = os.path.join(BASE_DIR, '.cursor', 'debug.log')
+                    try:
+                        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                        with open(log_path, 'a', encoding='utf-8') as f:
+                            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"G","location":"main.py:485","message":"Transcript API response","data":{"has_transcript":transcript_data is not None,"transcript_len":len(transcript_data) if transcript_data else 0},"timestamp":int(time.time()*1000)})+'\n')
+                    except Exception as log_e:
+                        logger.error(f"DEBUG LOG ERROR: {log_e}")
+                    # #endregion
                     
                     if transcript_data:
                         # Convert YouTube transcript format to our format
@@ -566,6 +635,15 @@ Do not include any other text, just the JSON array."""
                         }
                 
                 # If no fallback available, raise the original error
+                # #region agent log
+                log_path = os.path.join(BASE_DIR, '.cursor', 'debug.log')
+                try:
+                    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                    with open(log_path, 'a', encoding='utf-8') as f:
+                        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"H","location":"main.py:568","message":"Raising HTTPException - no fallback","data":{"error_msg":error_msg},"timestamp":int(time.time()*1000)})+'\n')
+                except Exception as log_e:
+                    logger.error(f"DEBUG LOG ERROR: {log_e}")
+                # #endregion
                 raise HTTPException(
                     status_code=503,
                     detail=f"Video download failed: {error_msg}. YouTube may be blocking automated downloads. Please try again later or use a different video."

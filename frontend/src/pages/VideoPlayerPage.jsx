@@ -26,10 +26,22 @@ function VideoPlayerPage() {
         setLoading(true);
         setError(null);
 
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/7b7349a8-4aec-40c0-88c1-85a8567508ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VideoPlayerPage.jsx:25',message:'Before API call',data:{videoId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FRONTEND'})}).catch(()=>{});
+        // #endregion
+
         // Call transcription API
         const response = await api.post(`/video/transcribe/${videoId}`);
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/7b7349a8-4aec-40c0-88c1-85a8567508ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VideoPlayerPage.jsx:30',message:'API call succeeded',data:{hasData:!!response.data},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FRONTEND'})}).catch(()=>{});
+        // #endregion
+        
         setTranscript(response.data);
       } catch (err) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/7b7349a8-4aec-40c0-88c1-85a8567508ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VideoPlayerPage.jsx:33',message:'API call failed',data:{error:err.message,status:err.response?.status,detail:err.response?.data?.detail},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FRONTEND'})}).catch(()=>{});
+        // #endregion
         setError(err.response?.data?.detail || 'Failed to load video transcription. Please try again.');
         console.error(err);
       } finally {

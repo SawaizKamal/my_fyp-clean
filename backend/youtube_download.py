@@ -1,5 +1,6 @@
 import yt_dlp
 import os
+import json
 from pathlib import Path
 
 
@@ -17,6 +18,16 @@ def download_youtube_video(url: str, output_path: str = "data/video.mp4") -> str
     Raises:
         Exception: If download fails
     """
+    # #region agent log
+    import time
+    log_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.cursor', 'debug.log')
+    try:
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"youtube_download.py:20","message":"download_youtube_video called","data":{"url":url,"output_path":output_path},"timestamp":int(time.time()*1000)})+'\n')
+    except Exception as e:
+        print(f"DEBUG LOG ERROR: {e}")
+    # #endregion
     print(f"📥 Downloading video from: {url}")
     
     # Ensure output directory exists
@@ -54,6 +65,15 @@ def download_youtube_video(url: str, output_path: str = "data/video.mp4") -> str
     }
     
     try:
+        # #region agent log
+        log_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.cursor', 'debug.log')
+        try:
+            os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            with open(log_path, 'a', encoding='utf-8') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"youtube_download.py:57","message":"Before yt_dlp download attempt","data":{"url":url,"has_user_agent":'user_agent' in ydl_opts},"timestamp":int(time.time()*1000)})+'\n')
+        except Exception as e:
+            print(f"DEBUG LOG ERROR: {e}")
+        # #endregion
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             # Download the video
             ydl.download([url])
@@ -82,9 +102,27 @@ def download_youtube_video(url: str, output_path: str = "data/video.mp4") -> str
             raise Exception(f"Downloaded file not found at expected location: {output_path}")
         
     except yt_dlp.DownloadError as e:
+        # #region agent log
+        log_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.cursor', 'debug.log')
+        try:
+            os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            with open(log_path, 'a', encoding='utf-8') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"youtube_download.py:84","message":"yt_dlp.DownloadError caught","data":{"error_type":"yt_dlp.DownloadError","error_msg":str(e),"error_lower":str(e).lower()},"timestamp":int(time.time()*1000)})+'\n')
+        except Exception as log_e:
+            print(f"DEBUG LOG ERROR: {log_e}")
+        # #endregion
         print(f"❌ Download error: {str(e)}")
         raise Exception(f"Failed to download video: {str(e)}")
     except Exception as e:
+        # #region agent log
+        log_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.cursor', 'debug.log')
+        try:
+            os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            with open(log_path, 'a', encoding='utf-8') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"D","location":"youtube_download.py:87","message":"Generic Exception caught","data":{"error_type":type(e).__name__,"error_msg":str(e),"error_lower":str(e).lower()},"timestamp":int(time.time()*1000)})+'\n')
+        except Exception as log_e:
+            print(f"DEBUG LOG ERROR: {log_e}")
+        # #endregion
         print(f"❌ Unexpected error during download: {str(e)}")
         raise
 
