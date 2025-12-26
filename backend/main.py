@@ -28,6 +28,10 @@ OPENAI_CLIENT = OpenAI(api_key=OPENAI_API_KEY)
 import whisper
 from googleapiclient.discovery import build
 import logging
+import subprocess
+import json
+import tempfile
+from fastapi.responses import StreamingResponse
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -43,13 +47,20 @@ app = FastAPI()
 # Cache Whisper model to avoid reloading on each request
 _whisper_model_cache = None
 
-def get_whisper_model():
-    """Get cached Whisper model or load it if not cached"""
+def get_whisper_model(model_size: str = "base"):
+    """Get cached Whisper model or load it if not cached
+    
+    Args:
+        model_size: Model size to use. Options: "tiny", "base", "small", "medium", "large"
+                    Default: "base" for balance between speed and accuracy
+    """
     global _whisper_model_cache
-    if _whisper_model_cache is None:
-        logger.info("Loading Whisper model (first time)...")
-        _whisper_model_cache = whisper.load_model("base")
-        logger.info("Whisper model loaded and cached")
+    cache_key = model_size
+    if _whisper_model_cache is None or not hasattr(_whisper_model_cache, '_model_size') or _whisper_model_cache._model_size != model_size:
+        logger.info(f"Loading Whisper model '{model_size}' (first time)...")
+        _whisper_model_cache = whisper.load_model(model_size)
+        _whisper_model_cache._model_size = model_size
+        logger.info(f"Whisper model '{model_size}' loaded and cached")
     return _whisper_model_cache
 
 @app.get("/api/health")
@@ -203,6 +214,207 @@ async def search_youtube(query: str):
         logger.error(f"YouTube search error: {e}", exc_info=True)
         return []  # Return empty list on error
 
+# ---------------- VIDEO PROCESSING HELPERS ----------------
+def get_video_duration(video_path: str) -> float:
+    """Get video duration in seconds using ffprobe (low memory)"""
+    try:
+        result = subprocess.run(
+            [
+                'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+                '-of', 'default=noprint_wrappers=1:nokey=1', video_path
+            ],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        duration = float(result.stdout.strip())
+        return duration
+    except subprocess.CalledProcessError as e:
+        logger.error(f"ffprobe error: {e.stderr}")
+        raise Exception(f"Failed to get video duration: {e.stderr}")
+    except ValueError:
+        raise Exception("Invalid video duration format")
+    except FileNotFoundError:
+        raise Exception("ffprobe not found. Please install ffmpeg.")
+
+def extract_audio_chunk(video_path: str, start_time: float, duration: float, output_path: str) -> str:
+    """Extract audio chunk from video without loading full video into memory"""
+    try:
+        subprocess.run(
+            [
+                'ffmpeg', '-i', video_path,
+                '-ss', str(start_time),
+                '-t', str(duration),
+                '-vn', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1',
+                '-y', output_path
+            ],
+            capture_output=True,
+            check=True
+        )
+        return output_path
+    except subprocess.CalledProcessError as e:
+        logger.error(f"ffmpeg error: {e.stderr.decode()}")
+        raise Exception(f"Failed to extract audio chunk: {e.stderr.decode()}")
+    except FileNotFoundError:
+        raise Exception("ffmpeg not found. Please install ffmpeg.")
+
+def transcribe_chunk(model, audio_path: str, chunk_start: float) -> List[Dict]:
+    """Transcribe a single audio chunk and adjust timestamps"""
+    try:
+        result = model.transcribe(audio_path, verbose=False, condition_on_previous_text=False)
+        segments = []
+        for seg in result.get("segments", []):
+            # Adjust timestamps to account for chunk offset
+            segments.append({
+                "start": seg["start"] + chunk_start,
+                "end": seg["end"] + chunk_start,
+                "text": seg["text"].strip()
+            })
+        return segments
+    except Exception as e:
+        logger.error(f"Transcription error for chunk at {chunk_start}: {e}")
+        return []
+
+async def analyze_problem_solution_sections(transcript_segments: List[Dict], user_query: Optional[str] = None) -> Dict:
+    """Analyze transcript to identify problem explanation and solution explanation sections"""
+    if not transcript_segments:
+        return {
+            "problem_segments": [],
+            "solution_segments": [],
+            "problem_timestamps": [],
+            "solution_timestamps": []
+        }
+    
+    # Build transcript text with timestamps
+    transcript_text = "\n".join(
+        f"[{seg['start']:.2f} - {seg['end']:.2f}] {seg['text']}"
+        for seg in transcript_segments
+    )
+    
+    prompt = f"""Analyze this video transcript and identify two types of sections:
+
+1. PROBLEM EXPLANATION sections: Where the problem, issue, or challenge is described/explained
+2. SOLUTION EXPLANATION sections: Where the solution, fix, or answer is provided
+
+{"User's Question/Query: " + user_query if user_query else ""}
+
+Transcript with timestamps:
+{transcript_text}
+
+Return a JSON object with this exact structure:
+{{
+  "problem_segments": [list of 0-based segment indices that explain the problem],
+  "solution_segments": [list of 0-based segment indices that explain the solution],
+  "problem_timestamps": [["start_time", "end_time"], ...] in seconds,
+  "solution_timestamps": [["start_time", "end_time"], ...] in seconds
+}}
+
+Focus on:
+- Problem sections: Error descriptions, issue explanations, what's wrong, challenges faced
+- Solution sections: How to fix, step-by-step solutions, code implementations, answers
+
+Return ONLY valid JSON, no other text."""
+
+    try:
+        response = await get_gpt4o_response(prompt)
+        # Extract JSON from response
+        import re
+        json_match = re.search(r'\{[^{}]*"problem_segments"[^{}]*\}', response or "", re.DOTALL)
+        if json_match:
+            analysis = json.loads(json_match.group())
+        else:
+            # Try parsing entire response
+            analysis = json.loads(response or "{}")
+        
+        # Validate and clean up
+        problem_segments = analysis.get("problem_segments", [])
+        solution_segments = analysis.get("solution_segments", [])
+        
+        # Ensure they're lists of integers
+        problem_segments = [int(i) for i in problem_segments if isinstance(i, (int, str)) and str(i).isdigit()]
+        solution_segments = [int(i) for i in solution_segments if isinstance(i, (int, str)) and str(i).isdigit()]
+        
+        # Validate indices
+        max_index = len(transcript_segments) - 1
+        problem_segments = [i for i in problem_segments if 0 <= i <= max_index]
+        solution_segments = [i for i in solution_segments if 0 <= i <= max_index]
+        
+        # Extract timestamps from segments
+        problem_timestamps = [
+            [transcript_segments[i]["start"], transcript_segments[i]["end"]]
+            for i in problem_segments
+        ]
+        solution_timestamps = [
+            [transcript_segments[i]["start"], transcript_segments[i]["end"]]
+            for i in solution_segments
+        ]
+        
+        return {
+            "problem_segments": problem_segments,
+            "solution_segments": solution_segments,
+            "problem_timestamps": problem_timestamps,
+            "solution_timestamps": solution_timestamps
+        }
+    except Exception as e:
+        logger.warning(f"Failed to analyze problem/solution sections: {e}")
+        # Fallback: if user_query provided, try to identify solution segments only
+        if user_query:
+            return await analyze_solution_segments_fallback(transcript_segments, user_query)
+        return {
+            "problem_segments": [],
+            "solution_segments": [],
+            "problem_timestamps": [],
+            "solution_timestamps": []
+        }
+
+async def analyze_solution_segments_fallback(transcript_segments: List[Dict], user_query: str) -> Dict:
+    """Fallback: Simple solution segment identification"""
+    transcript_text = "\n".join(
+        f"[{seg['start']:.2f} - {seg['end']:.2f}] {seg['text']}"
+        for seg in transcript_segments
+    )
+    
+    prompt = f"""User's Question: {user_query}
+
+Transcript:
+{transcript_text}
+
+Return a JSON array of segment indices (0-based) that contain solutions or answers to the user's question.
+Format: [0, 5, 12] or []"""
+
+    try:
+        response = await get_gpt4o_response(prompt)
+        import re
+        json_match = re.search(r'\[[\d,\s]*\]', response or "")
+        if json_match:
+            solution_segments = json.loads(json_match.group())
+        else:
+            solution_segments = []
+        
+        solution_segments = [int(i) for i in solution_segments if isinstance(i, (int, str)) and str(i).isdigit()]
+        max_index = len(transcript_segments) - 1
+        solution_segments = [i for i in solution_segments if 0 <= i <= max_index]
+        
+        solution_timestamps = [
+            [transcript_segments[i]["start"], transcript_segments[i]["end"]]
+            for i in solution_segments
+        ]
+        
+        return {
+            "problem_segments": [],
+            "solution_segments": solution_segments,
+            "problem_timestamps": [],
+            "solution_timestamps": solution_timestamps
+        }
+    except Exception as e:
+        logger.warning(f"Fallback analysis failed: {e}")
+        return {
+            "problem_segments": [],
+            "solution_segments": [],
+            "problem_timestamps": [],
+            "solution_timestamps": []
+        }
+
 # ---------------- VIDEO TASK ----------------
 async def process_video_task(task_id, url, goal):
     """Process video task with optimized performance"""
@@ -266,32 +478,124 @@ Example: [10.5 - 25.3]
         tasks[task_id] = {"status": TaskStatus.FAILED, "error": str(e), "progress": 0}
 
 async def transcribe_uploaded_video_task(task_id: str, video_path: str, video_id: str, filename: str, user_query: Optional[str] = None):
-    """Background task to transcribe uploaded video"""
+    """
+    Background task to transcribe uploaded video using chunked processing.
+    Processes video in 30-second chunks for low-RAM efficiency and live updates.
+    """
+    temp_audio_dir = None
     try:
-        logger.info(f"Starting transcription task: {task_id} for video: {video_id}")
-        tasks[task_id] = {"status": TaskStatus.UPLOADING, "progress": 10}
+        logger.info(f"Starting chunked transcription task: {task_id} for video: {video_id}")
+        tasks[task_id] = {"status": TaskStatus.UPLOADING, "progress": 5, "segments": []}
         
         # Verify file exists
         if not os.path.exists(video_path):
             raise Exception(f"Video file not found: {video_path}")
         
-        tasks[task_id] = {"status": TaskStatus.TRANSCRIBING, "progress": 20}
-        logger.info("Loading Whisper model...")
-        model = get_whisper_model()
-        logger.info("Starting transcription...")
-        result = model.transcribe(video_path, verbose=False, condition_on_previous_text=False)
-        logger.info(f"Transcription complete. Found {len(result.get('segments', []))} segments")
+        # Step 1: Check video duration (max 5 minutes)
+        logger.info("Checking video duration...")
+        try:
+            duration = get_video_duration(video_path)
+            MAX_DURATION = 5 * 60  # 5 minutes in seconds
+            if duration > MAX_DURATION:
+                error_msg = f"Video duration ({duration/60:.1f} minutes) exceeds maximum allowed (5 minutes)."
+                suggestion = "Please upload a shorter video or trim it to 5 minutes or less."
+                raise Exception(f"{error_msg} {suggestion}")
+            logger.info(f"Video duration: {duration:.2f} seconds")
+        except Exception as e:
+            if "ffprobe not found" in str(e) or "ffmpeg not found" in str(e):
+                error_msg = "Video processing tools (ffmpeg) not available on server."
+                suggestion = "Please contact administrator to install ffmpeg, or try a different video format."
+                raise Exception(f"{error_msg} {suggestion}")
+            raise
         
-        tasks[task_id] = {"status": TaskStatus.TRANSCRIBING, "progress": 60}
+        # Step 2: Load Whisper model (prefer tiny/base for low-RAM)
+        tasks[task_id] = {"status": TaskStatus.TRANSCRIBING, "progress": 10, "segments": []}
+        logger.info("Loading Whisper model (base for balance)...")
+        model = get_whisper_model("base")  # Use base model (can be changed to "tiny" for even lower RAM)
+        logger.info("Whisper model loaded")
         
-        # Format transcript with timestamps
+        # Step 3: Process video in 30-second chunks
+        CHUNK_DURATION = 30.0  # 30 seconds per chunk
+        temp_audio_dir = tempfile.mkdtemp(prefix=f"whisper_chunks_{task_id}_")
+        logger.info(f"Created temp directory: {temp_audio_dir}")
+        
+        all_segments = []
+        chunk_index = 0
+        total_chunks = int(duration / CHUNK_DURATION) + (1 if duration % CHUNK_DURATION > 0 else 0)
+        logger.info(f"Processing {total_chunks} chunks of {CHUNK_DURATION}s each")
+        
+        current_time = 0.0
+        detected_language = "unknown"
+        
+        while current_time < duration:
+            chunk_start = current_time
+            chunk_end = min(current_time + CHUNK_DURATION, duration)
+            actual_chunk_duration = chunk_end - chunk_start
+            
+            logger.info(f"Processing chunk {chunk_index + 1}/{total_chunks} ({chunk_start:.1f}s - {chunk_end:.1f}s)")
+            
+            # Extract audio chunk (low memory - doesn't load full video)
+            audio_chunk_path = os.path.join(temp_audio_dir, f"chunk_{chunk_index}.wav")
+            try:
+                extract_audio_chunk(video_path, chunk_start, actual_chunk_duration, audio_chunk_path)
+            except Exception as e:
+                error_msg = f"Failed to extract audio chunk at {chunk_start}s: {str(e)}"
+                suggestion = "Video format may be unsupported. Try converting to MP4 with H.264 codec."
+                logger.error(f"{error_msg} {suggestion}")
+                raise Exception(f"{error_msg} {suggestion}")
+            
+            # Transcribe chunk
+            try:
+                chunk_segments = transcribe_chunk(model, audio_chunk_path, chunk_start)
+                all_segments.extend(chunk_segments)
+                
+                # Detect language from first chunk
+                if chunk_index == 0 and chunk_segments:
+                    # Try to get language from whisper result
+                    try:
+                        temp_result = model.transcribe(audio_chunk_path, verbose=False)
+                        detected_language = temp_result.get("language", "unknown")
+                    except:
+                        pass
+                
+                # Update task with new segments (for live updates)
+                progress = 10 + int((chunk_index + 1) / total_chunks * 60)  # 10-70% for transcription
+                tasks[task_id] = {
+                    "status": TaskStatus.TRANSCRIBING,
+                    "progress": progress,
+                    "segments": all_segments.copy(),  # Include all segments so far
+                    "chunks_processed": chunk_index + 1,
+                    "total_chunks": total_chunks
+                }
+                logger.info(f"Chunk {chunk_index + 1} transcribed: {len(chunk_segments)} segments")
+                
+            except Exception as e:
+                logger.warning(f"Transcription failed for chunk {chunk_index + 1}: {e}")
+                # Continue with next chunk instead of failing completely
+                pass
+            
+            # Clean up audio chunk file immediately to save space
+            try:
+                if os.path.exists(audio_chunk_path):
+                    os.unlink(audio_chunk_path)
+            except:
+                pass
+            
+            current_time = chunk_end
+            chunk_index += 1
+        
+        # Step 4: Format transcript segments
+        logger.info(f"Formatting {len(all_segments)} total segments...")
         transcript_segments = []
         full_transcript_lines = []
         
-        for seg in result.get("segments", []):
+        for seg in all_segments:
             start = seg["start"]
             end = seg["end"]
             text = seg["text"].strip()
+            
+            if not text:  # Skip empty segments
+                continue
             
             transcript_segments.append({
                 "start": start,
@@ -303,63 +607,21 @@ async def transcribe_uploaded_video_task(task_id: str, video_path: str, video_id
             full_transcript_lines.append(f"[{int(start // 60)}:{int(start % 60):02d}] {text}")
         
         full_transcript = "\n".join(full_transcript_lines)
-        logger.info(f"Formatted transcript with {len(transcript_segments)} segments")
+        logger.info(f"Formatted {len(transcript_segments)} transcript segments")
         
-        tasks[task_id] = {"status": TaskStatus.FILTERING, "progress": 80}
+        # Step 5: Analyze problem vs solution sections using GPT
+        tasks[task_id] = {"status": TaskStatus.FILTERING, "progress": 75, "segments": transcript_segments}
+        logger.info("Analyzing problem and solution sections...")
         
-        # Use GPT-4 to identify solution segments if user_query is provided
-        solution_segments = []
-        if user_query:
-            logger.info(f"Identifying solution segments using GPT-4 for query: {user_query[:100]}")
-            solution_prompt = f"""Analyze this video transcript and identify segments that contain solutions, explanations, or key teaching moments relevant to the user's question.
-
-User's Question/Query: {user_query}
-
-Transcript:
-{full_transcript}
-
-Return a JSON array of segment indices (0-based) that contain solutions or key explanations. Focus on segments that:
-1. Explain how to solve the problem mentioned in the user's query
-2. Show code implementations or fixes
-3. Provide step-by-step instructions
-4. Explain concepts clearly related to the query
-5. Give practical examples that answer the question
-
-Skip segments that are:
-- Introductions or greetings
-- Filler words or pauses
-- Off-topic discussions
-- Outros or sign-offs
-- Not relevant to the user's query
-
-Return ONLY a JSON array like: [0, 5, 12, 23] or [] if no clear solutions found.
-Do not include any other text, just the JSON array."""
-            
-            try:
-                solution_response = await get_gpt4o_response(solution_prompt)
-                import json
-                import re
-                
-                json_match = re.search(r'\[[\d,\s]*\]', solution_response or "")
-                if json_match:
-                    solution_segments = json.loads(json_match.group())
-                else:
-                    try:
-                        solution_segments = json.loads(solution_response)
-                    except:
-                        solution_segments = []
-                
-                if not isinstance(solution_segments, list):
-                    solution_segments = []
-                solution_segments = [int(i) for i in solution_segments if isinstance(i, (int, str)) and str(i).isdigit()]
-                solution_segments = [i for i in solution_segments if 0 <= i < len(transcript_segments)]
-                
-                logger.info(f"Identified {len(solution_segments)} solution segments")
-            except Exception as e:
-                logger.warning(f"Failed to identify solution segments: {e}")
-                solution_segments = []
+        analysis_result = await analyze_problem_solution_sections(transcript_segments, user_query)
+        problem_segments = analysis_result.get("problem_segments", [])
+        solution_segments = analysis_result.get("solution_segments", [])
+        problem_timestamps = analysis_result.get("problem_timestamps", [])
+        solution_timestamps = analysis_result.get("solution_timestamps", [])
         
-        # Store results in task
+        logger.info(f"Identified {len(problem_segments)} problem segments and {len(solution_segments)} solution segments")
+        
+        # Step 6: Store final results
         tasks[task_id] = {
             "status": TaskStatus.COMPLETED,
             "progress": 100,
@@ -368,9 +630,12 @@ Do not include any other text, just the JSON array."""
             "filename": filename,
             "segments": transcript_segments,
             "solution_segments": solution_segments,
+            "problem_segments": problem_segments,
+            "solution_timestamps": solution_timestamps,
+            "problem_timestamps": problem_timestamps,
             "full_transcript": full_transcript,
-            "duration": result.get("duration", 0),
-            "language": result.get("language", "unknown"),
+            "duration": duration,
+            "language": detected_language,
             "total_segments": len(transcript_segments)
         }
         logger.info(f"Transcription task {task_id} completed successfully")
@@ -380,11 +645,35 @@ Do not include any other text, just the JSON array."""
         error_details = traceback.format_exc()
         logger.error(f"Transcription task error for {task_id}: {e}")
         logger.error(f"Full traceback: {error_details}")
+        
+        # Provide helpful error message with suggestions
+        error_message = str(e)
+        if "duration" in error_message.lower() or "5 minutes" in error_message:
+            suggestion = "Please upload a video that is 5 minutes or shorter."
+        elif "ffmpeg" in error_message.lower() or "ffprobe" in error_message.lower():
+            suggestion = "Server configuration issue. Please contact support."
+        elif "format" in error_message.lower() or "codec" in error_message.lower():
+            suggestion = "Try converting your video to MP4 format with H.264 codec."
+        elif "memory" in error_message.lower() or "ram" in error_message.lower():
+            suggestion = "Video processing requires more resources. Try a shorter or lower quality video."
+        else:
+            suggestion = "Please check the video file and try again, or contact support if the issue persists."
+        
         tasks[task_id] = {
             "status": TaskStatus.FAILED,
-            "error": str(e),
+            "error": error_message,
+            "error_suggestion": suggestion,
             "progress": 0
         }
+    finally:
+        # Clean up temporary audio directory
+        if temp_audio_dir and os.path.exists(temp_audio_dir):
+            try:
+                import shutil
+                shutil.rmtree(temp_audio_dir)
+                logger.info(f"Cleaned up temp directory: {temp_audio_dir}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up temp directory: {e}")
 
 # ---------------- AUTH ROUTES ----------------
 @app.post("/api/auth/register")
@@ -539,8 +828,28 @@ async def transcribe_local_video(
         logger.info(f"Video file exists: {os.path.exists(video_path)}")
         logger.info(f"Video file size on disk: {os.path.getsize(video_path) if os.path.exists(video_path) else 0} bytes")
         
+        # Check video duration (max 5 minutes) - do this before starting background task
+        try:
+            duration = get_video_duration(video_path)
+            MAX_DURATION = 5 * 60  # 5 minutes
+            if duration > MAX_DURATION:
+                # Clean up file
+                if os.path.exists(video_path):
+                    os.unlink(video_path)
+                raise HTTPException(
+                    400,
+                    f"Video duration ({duration/60:.1f} minutes) exceeds maximum allowed (5 minutes). "
+                    f"Please upload a shorter video or trim it to 5 minutes or less."
+                )
+            logger.info(f"Video duration validated: {duration:.2f} seconds")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning(f"Could not check video duration (will check in background task): {e}")
+            # Continue - will be checked in background task
+        
         # Initialize task status
-        tasks[task_id] = {"status": TaskStatus.PENDING, "progress": 0}
+        tasks[task_id] = {"status": TaskStatus.PENDING, "progress": 0, "segments": []}
         
         # Start background transcription task
         bg.add_task(transcribe_uploaded_video_task, task_id, video_path, video_id, file.filename, user_query)
@@ -574,6 +883,7 @@ async def get_transcription_status(task_id: str, user=Depends(auth.get_current_u
     """
     Get transcription status and results for a task.
     Returns the full transcript data when status is 'completed'.
+    Includes live segments as they're processed.
     """
     if task_id not in tasks:
         raise HTTPException(404, "Task not found")
@@ -591,26 +901,33 @@ async def get_transcription_status(task_id: str, user=Depends(auth.get_current_u
             "filename": task.get("filename"),
             "segments": task.get("segments", []),
             "solution_segments": task.get("solution_segments", []),
+            "problem_segments": task.get("problem_segments", []),
+            "solution_timestamps": task.get("solution_timestamps", []),
+            "problem_timestamps": task.get("problem_timestamps", []),
             "full_transcript": task.get("full_transcript", ""),
             "duration": task.get("duration", 0),
             "language": task.get("language", "unknown"),
             "total_segments": task.get("total_segments", 0)
         }
     
-    # If failed, return error
+    # If failed, return error with suggestion
     if task.get("status") == TaskStatus.FAILED:
         return {
             "task_id": task_id,
             "status": "failed",
             "error": task.get("error", "Unknown error"),
+            "error_suggestion": task.get("error_suggestion", "Please try again or contact support."),
             "progress": task.get("progress", 0)
         }
     
-    # Otherwise return current status
+    # Otherwise return current status with live segments
     return {
         "task_id": task_id,
         "status": task.get("status", "pending"),
-        "progress": task.get("progress", 0)
+        "progress": task.get("progress", 0),
+        "segments": task.get("segments", []),  # Live segments as they're processed
+        "chunks_processed": task.get("chunks_processed", 0),
+        "total_chunks": task.get("total_chunks", 0)
     }
 
 

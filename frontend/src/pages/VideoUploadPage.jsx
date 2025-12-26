@@ -65,9 +65,11 @@ function VideoUploadPage() {
       // Validate file size (500MB limit)
       const MAX_SIZE = 500 * 1024 * 1024; // 500MB
       if (selectedFile.size > MAX_SIZE) {
-        setError('File size must be less than 500MB');
+        setError('File size must be less than 500MB. 💡 Suggestion: Compress the video or use a shorter clip.');
         return;
       }
+      
+      // Note: Duration validation (max 5 minutes) will be done on the server
       
       setFile(selectedFile);
       setError(null);
@@ -130,13 +132,33 @@ function VideoUploadPage() {
         setTaskId(response.data.task_id);
         if (progressInterval) clearInterval(progressInterval);
         
-        // Poll for status
+        // Poll for status with live updates
         pollIntervalRef.current = setInterval(async () => {
           try {
             const statusResponse = await api.get(`/transcribe/status/${response.data.task_id}`);
             const status = statusResponse.data;
             
             setProgress(status.progress || 0);
+            
+            // Update transcript progressively if segments are available
+            if (status.segments && status.segments.length > 0) {
+              setTranscript({
+                video_id: status.video_id,
+                video_url: status.video_url,
+                filename: status.filename,
+                segments: status.segments,
+                solution_segments: status.solution_segments || [],
+                problem_segments: status.problem_segments || [],
+                solution_timestamps: status.solution_timestamps || [],
+                problem_timestamps: status.problem_timestamps || [],
+                full_transcript: status.full_transcript || '',
+                duration: status.duration || 0,
+                language: status.language || 'unknown',
+                total_segments: status.total_segments || status.segments.length,
+                chunks_processed: status.chunks_processed,
+                total_chunks: status.total_chunks
+              });
+            }
             
             if (status.status === 'completed') {
               if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
@@ -146,7 +168,10 @@ function VideoUploadPage() {
                 video_url: status.video_url,
                 filename: status.filename,
                 segments: status.segments,
-                solution_segments: status.solution_segments,
+                solution_segments: status.solution_segments || [],
+                problem_segments: status.problem_segments || [],
+                solution_timestamps: status.solution_timestamps || [],
+                problem_timestamps: status.problem_timestamps || [],
                 full_transcript: status.full_transcript,
                 duration: status.duration,
                 language: status.language,
@@ -156,7 +181,9 @@ function VideoUploadPage() {
               setTranscribing(false);
             } else if (status.status === 'failed') {
               if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-              setError(status.error || 'Transcription failed');
+              const errorMsg = status.error || 'Transcription failed';
+              const suggestion = status.error_suggestion || 'Please try again.';
+              setError(`${errorMsg}\n\n💡 Suggestion: ${suggestion}`);
               setUploading(false);
               setTranscribing(false);
             }
@@ -164,7 +191,7 @@ function VideoUploadPage() {
             console.error('Polling error:', pollErr);
             // Continue polling on error
           }
-        }, 2000); // Poll every 2 seconds
+        }, 1500); // Poll every 1.5 seconds for more responsive updates
         
         // Clean up polling on component unmount or error
         // Store in a ref or handle cleanup in finally block
@@ -219,6 +246,10 @@ function VideoUploadPage() {
 
   const isSolutionSegment = (index) => {
     return transcript?.solution_segments?.includes(index) || false;
+  };
+
+  const isProblemSegment = (index) => {
+    return transcript?.problem_segments?.includes(index) || false;
   };
 
   const isCurrentSegment = (segment) => {
@@ -346,7 +377,12 @@ function VideoUploadPage() {
                     ></div>
                   </div>
                   <p className="text-xs text-gray-500 mt-2">
-                    This may take a few minutes depending on video length...
+                    Processing video in 30-second chunks for optimal performance...
+                    {transcript?.chunks_processed && transcript?.total_chunks && (
+                      <span className="text-purple-400 ml-2">
+                        Chunk {transcript.chunks_processed}/{transcript.total_chunks}
+                      </span>
+                    )}
                   </p>
                 </div>
               )}
@@ -382,9 +418,18 @@ function VideoUploadPage() {
                     <p className="text-sm text-gray-400">Language: {transcript.language}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm text-purple-400">
-                      ⭐ {transcript.solution_segments?.length || 0} Solution Segments
-                    </p>
+                    <div className="flex gap-3 items-center">
+                      {transcript.problem_segments?.length > 0 && (
+                        <p className="text-sm text-red-400">
+                          ❓ {transcript.problem_segments.length} Problem
+                        </p>
+                      )}
+                      {transcript.solution_segments?.length > 0 && (
+                        <p className="text-sm text-yellow-400">
+                          ⭐ {transcript.solution_segments.length} Solution
+                        </p>
+                      )}
+                    </div>
                     <p className="text-xs text-gray-500">
                       {transcript.total_segments} Total Segments
                     </p>
@@ -422,6 +467,7 @@ function VideoUploadPage() {
                 <div className="flex-1 overflow-y-auto space-y-2 pr-2">
                   {transcript.segments?.map((segment, index) => {
                     const isSolution = isSolutionSegment(index);
+                    const isProblem = isProblemSegment(index);
                     const isCurrent = isCurrentSegment(segment);
                     
                     return (
@@ -436,7 +482,9 @@ function VideoUploadPage() {
                             : 'bg-[#1a1a1a] border border-[#2a2a2a] hover:bg-[#252525] hover:border-purple-600/50'
                           }
                           ${isSolution ? 'ring-2 ring-yellow-500 ring-opacity-70 bg-yellow-500 bg-opacity-10' : ''}
+                          ${isProblem ? 'ring-2 ring-red-500 ring-opacity-50 bg-red-500 bg-opacity-5' : ''}
                           ${isSolution && isCurrent ? 'ring-4 ring-yellow-400 ring-opacity-80' : ''}
+                          ${isProblem && isCurrent ? 'ring-4 ring-red-400 ring-opacity-60' : ''}
                         `}
                         style={{
                           transform: isCurrent ? 'scale(1.02)' : 'scale(1)',
@@ -452,16 +500,27 @@ function VideoUploadPage() {
                           >
                             {segment.timestamp}
                           </button>
-                          {isSolution && (
-                            <span className="text-xs bg-yellow-500 bg-opacity-30 text-yellow-200 px-2 py-0.5 rounded font-semibold animate-pulse">
-                              ⭐ Solution
-                            </span>
-                          )}
+                          <div className="flex gap-1">
+                            {isProblem && (
+                              <span className="text-xs bg-red-500 bg-opacity-30 text-red-200 px-2 py-0.5 rounded font-semibold">
+                                ❓ Problem
+                              </span>
+                            )}
+                            {isSolution && (
+                              <span className="text-xs bg-yellow-500 bg-opacity-30 text-yellow-200 px-2 py-0.5 rounded font-semibold animate-pulse">
+                                ⭐ Solution
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <p 
-                          className={`text-sm leading-relaxed ${isSolution ? 'text-yellow-100 font-semibold' : 'text-gray-300'}`}
+                          className={`text-sm leading-relaxed ${
+                            isSolution ? 'text-yellow-100 font-semibold' : 
+                            isProblem ? 'text-red-200 font-medium' : 
+                            'text-gray-300'
+                          }`}
                           style={{
-                            fontWeight: isSolution ? 600 : 400,
+                            fontWeight: isSolution ? 600 : isProblem ? 500 : 400,
                           }}
                         >
                           {segment.text}
@@ -469,44 +528,84 @@ function VideoUploadPage() {
                       </div>
                     );
                   })}
+                  
+                  {/* Show live transcription progress */}
+                  {transcribing && transcript?.chunks_processed && transcript?.total_chunks && (
+                    <div className="mt-4 pt-4 border-t border-[#2a2a2a]">
+                      <p className="text-xs text-gray-400 text-center">
+                        📝 Processing chunk {transcript.chunks_processed} of {transcript.total_chunks}...
+                        {transcript.segments?.length > 0 && (
+                          <span className="ml-2 text-purple-400">
+                            ({transcript.segments.length} segments transcribed)
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
-                {/* Solution Segments Summary */}
-                {transcript.solution_segments && transcript.solution_segments.length > 0 && (
+                {/* Problem & Solution Segments Summary */}
+                {(transcript.solution_segments?.length > 0 || transcript.problem_segments?.length > 0) && (
                   <div className="mt-4 pt-4 border-t border-[#2a2a2a]">
                     <p className="text-xs text-gray-400 mb-2">
-                      💡 Click on highlighted segments (⭐) to jump to solution parts
+                      💡 Click on highlighted segments to jump to specific parts
                     </p>
                     <div className="space-y-2">
-                      <button
-                        onClick={() => {
-                          const firstSolution = transcript.solution_segments[0];
-                          if (firstSolution < transcript.segments.length) {
-                            jumpToTimestamp(transcript.segments[firstSolution].start);
-                          }
-                        }}
-                        className="w-full px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded-lg text-sm font-semibold transition transform hover:scale-105"
-                      >
-                        ⭐ Jump to First Solution
-                      </button>
-                      {transcript.solution_segments.length > 1 && (
+                      {transcript.solution_segments?.length > 0 && (
+                        <>
+                          <button
+                            onClick={() => {
+                              const firstSolution = transcript.solution_segments[0];
+                              if (firstSolution < transcript.segments.length) {
+                                jumpToTimestamp(transcript.segments[firstSolution].start);
+                              }
+                            }}
+                            className="w-full px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded-lg text-sm font-semibold transition transform hover:scale-105"
+                          >
+                            ⭐ Jump to First Solution
+                          </button>
+                          {transcript.solution_segments.length > 1 && (
+                            <button
+                              onClick={() => {
+                                const firstSolutionIndex = transcript.solution_segments[0];
+                                const element = document.querySelector(`[data-segment-index="${firstSolutionIndex}"]`);
+                                if (element) {
+                                  element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                }
+                              }}
+                              className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm font-semibold transition transform hover:scale-105"
+                            >
+                              📍 Scroll to Solutions
+                            </button>
+                          )}
+                        </>
+                      )}
+                      {transcript.problem_segments?.length > 0 && (
                         <button
                           onClick={() => {
-                            const firstSolutionIndex = transcript.solution_segments[0];
-                            const element = document.querySelector(`[data-segment-index="${firstSolutionIndex}"]`);
-                            if (element) {
-                              element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            const firstProblem = transcript.problem_segments[0];
+                            if (firstProblem < transcript.segments.length) {
+                              jumpToTimestamp(transcript.segments[firstProblem].start);
                             }
                           }}
-                          className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm font-semibold transition transform hover:scale-105"
+                          className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm font-semibold transition transform hover:scale-105"
                         >
-                          📍 Scroll to Solutions
+                          ❓ Jump to Problem Explanation
                         </button>
                       )}
                     </div>
-                    <p className="text-xs text-yellow-400 mt-2 text-center">
-                      {transcript.solution_segments.length} solution segment{transcript.solution_segments.length !== 1 ? 's' : ''} found
-                    </p>
+                    <div className="mt-2 text-xs text-center space-y-1">
+                      {transcript.solution_segments?.length > 0 && (
+                        <p className="text-yellow-400">
+                          ⭐ {transcript.solution_segments.length} solution segment{transcript.solution_segments.length !== 1 ? 's' : ''} found
+                        </p>
+                      )}
+                      {transcript.problem_segments?.length > 0 && (
+                        <p className="text-red-400">
+                          ❓ {transcript.problem_segments.length} problem segment{transcript.problem_segments.length !== 1 ? 's' : ''} found
+                        </p>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
