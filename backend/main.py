@@ -1,7 +1,7 @@
 import sys, os, uuid, re
 from enum import Enum
 from typing import List, Optional, Dict
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, File, UploadFile
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -108,6 +108,9 @@ class ChatRequest(BaseModel):
     message: str
     code: Optional[str] = None
     use_advanced_analysis: Optional[bool] = False  # New flag for advanced analysis
+
+class VideoUploadRequest(BaseModel):
+    user_query: Optional[str] = None  # Optional query to help identify solution segments
 
 class VideoSegment(BaseModel):
     title: str
@@ -359,11 +362,19 @@ async def video(task_id: str, user=Depends(auth.get_current_user)):
 
 
 @app.post("/api/transcribe/local")
-async def transcribe_local_video(file: UploadFile = File(...), user=Depends(auth.get_current_user)):
+async def transcribe_local_video(
+    file: UploadFile = File(...),
+    user_query: Optional[str] = Form(None),
+    user=Depends(auth.get_current_user)
+):
     """
-    Transcribe a locally uploaded video file.
-    Accepts video file upload and returns transcript with timestamps.
+    Transcribe a locally uploaded video file with GPT-4 solution segment detection.
+    Accepts video file upload and returns transcript with timestamps and solution segments.
     Max file size: 500MB
+    
+    Args:
+        file: Video file to upload
+        user_query: Optional query/question to help identify solution segments
     """
     import tempfile
     import shutil
@@ -375,9 +386,14 @@ async def transcribe_local_video(file: UploadFile = File(...), user=Depends(auth
     # File size limit: 500MB (for transcription)
     MAX_FILE_SIZE = 500 * 1024 * 1024  # 500MB
     
-    # Save uploaded file temporarily with size checking
-    temp_path = None
-    file_size = 0
+    # Save uploaded file to a persistent location for playback
+    video_id = str(uuid.uuid4())
+    
+    # Preserve original file extension if available, otherwise default to .mp4
+    original_filename = file.filename or "video"
+    file_extension = os.path.splitext(original_filename)[1] or ".mp4"
+    video_path = os.path.join(DATA_DIR, f"{video_id}{file_extension}")
+    
     try:
         # Read file content first to check size
         content = await file.read()
@@ -386,51 +402,148 @@ async def transcribe_local_video(file: UploadFile = File(...), user=Depends(auth
         if file_size > MAX_FILE_SIZE:
             raise HTTPException(400, f"File too large. Maximum size is {MAX_FILE_SIZE / (1024*1024):.0f}MB")
         
-        # Write to temporary file
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp_file:
-            temp_path = tmp_file.name
-            tmp_file.write(content)
+        # Save video file for later playback
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(video_path, 'wb') as f:
+            f.write(content)
         
-        logger.info(f"Transcribing local video: {file.filename}")
+        logger.info(f"Transcribing local video: {file.filename} (ID: {video_id})")
         
         # Use cached Whisper model
         model = get_whisper_model()
-        result = model.transcribe(temp_path, verbose=False)
+        result = model.transcribe(video_path, verbose=False)
         
         # Format transcript with timestamps
-        transcript_segments = [
-            {
-                "start": seg["start"],
-                "end": seg["end"],
-                "text": seg["text"].strip(),
-                "timestamp": f"[{seg['start']:.2f} - {seg['end']:.2f}]"
-            }
-            for seg in result.get("segments", [])
-        ]
+        transcript_segments = []
+        full_transcript_lines = []
         
-        full_transcript = "\n".join(
-            f"[{seg['start']:.2f} - {seg['end']:.2f}] {seg['text']}" 
-            for seg in result.get("segments", [])
-        )
+        for seg in result.get("segments", []):
+            start = seg["start"]
+            end = seg["end"]
+            text = seg["text"].strip()
+            
+            transcript_segments.append({
+                "start": start,
+                "end": end,
+                "text": text,
+                "timestamp": f"{int(start // 60)}:{int(start % 60):02d}"
+            })
+            
+            full_transcript_lines.append(f"[{int(start // 60)}:{int(start % 60):02d}] {text}")
+        
+        full_transcript = "\n".join(full_transcript_lines)
+        
+        # Use GPT-4 to identify solution segments if user_query is provided
+        solution_segments = []
+        if user_query:
+            logger.info(f"Identifying solution segments using GPT-4 for query: {user_query[:100]}")
+            solution_prompt = f"""Analyze this video transcript and identify segments that contain solutions, explanations, or key teaching moments relevant to the user's question.
+
+User's Question/Query: {user_query}
+
+Transcript:
+{full_transcript}
+
+Return a JSON array of segment indices (0-based) that contain solutions or key explanations. Focus on segments that:
+1. Explain how to solve the problem mentioned in the user's query
+2. Show code implementations or fixes
+3. Provide step-by-step instructions
+4. Explain concepts clearly related to the query
+5. Give practical examples that answer the question
+
+Skip segments that are:
+- Introductions or greetings
+- Filler words or pauses
+- Off-topic discussions
+- Outros or sign-offs
+- Not relevant to the user's query
+
+Return ONLY a JSON array like: [0, 5, 12, 23] or [] if no clear solutions found.
+Do not include any other text, just the JSON array."""
+            
+            try:
+                solution_response = await get_gpt4o_response(solution_prompt)
+                import json
+                import re
+                
+                # Find JSON array in response
+                json_match = re.search(r'\[[\d,\s]*\]', solution_response or "")
+                if json_match:
+                    solution_segments = json.loads(json_match.group())
+                else:
+                    try:
+                        solution_segments = json.loads(solution_response)
+                    except:
+                        solution_segments = []
+                
+                # Ensure solution_segments is a list of integers
+                if not isinstance(solution_segments, list):
+                    solution_segments = []
+                solution_segments = [int(i) for i in solution_segments if isinstance(i, (int, str)) and str(i).isdigit()]
+                solution_segments = [i for i in solution_segments if 0 <= i < len(transcript_segments)]
+                
+                logger.info(f"Identified {len(solution_segments)} solution segments")
+            except Exception as e:
+                logger.warning(f"Failed to identify solution segments: {e}")
+                solution_segments = []
         
         return {
+            "video_id": video_id,
+            "video_url": f"/video/upload/{video_id}",
             "filename": file.filename,
             "segments": transcript_segments,
+            "solution_segments": solution_segments,
             "full_transcript": full_transcript,
             "duration": result.get("duration", 0),
-            "language": result.get("language", "unknown")
+            "language": result.get("language", "unknown"),
+            "total_segments": len(transcript_segments)
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Transcription error: {e}", exc_info=True)
-        raise HTTPException(500, f"Transcription failed: {str(e)}")
-    finally:
-        # Clean up temporary file
-        if temp_path and os.path.exists(temp_path):
+        # Clean up video file on error
+        if os.path.exists(video_path):
             try:
-                os.unlink(temp_path)
+                os.unlink(video_path)
             except:
                 pass
+        raise HTTPException(500, f"Transcription failed: {str(e)}")
+
+
+@app.get("/api/video/upload/{video_id}")
+async def stream_uploaded_video(video_id: str, user=Depends(auth.get_current_user)):
+    """
+    Stream an uploaded video file for playback.
+    """
+    # Try different video extensions
+    base_path = os.path.join(DATA_DIR, video_id)
+    possible_extensions = ['.mp4', '.webm', '.mkv', '.avi', '.mov', '.m4v']
+    
+    video_path = None
+    for ext in possible_extensions:
+        test_path = base_path + ext
+        if os.path.exists(test_path):
+            video_path = test_path
+            break
+    
+    if not video_path:
+        raise HTTPException(404, "Video not found")
+    
+    # Determine media type based on extension
+    ext = os.path.splitext(video_path)[1].lower()
+    media_types = {
+        '.mp4': 'video/mp4',
+        '.webm': 'video/webm',
+        '.mkv': 'video/x-matroska',
+        '.avi': 'video/x-msvideo',
+        '.mov': 'video/quicktime',
+        '.m4v': 'video/x-m4v'
+    }
+    media_type = media_types.get(ext, 'video/mp4')
+    
+    return FileResponse(video_path, media_type=media_type)
 
 
 @app.post("/api/video/transcribe/{video_id}")

@@ -9,6 +9,7 @@ import ProcessPage from './pages/ProcessPage';
 import ResultPage from './pages/ResultPage';
 import ChatPage from './pages/ChatPage';
 import VideoPlayerPage from './pages/VideoPlayerPage';
+import VideoUploadPage from './pages/VideoUploadPage';
 import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
@@ -57,6 +58,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <VideoPlayerPage />
+              </ProtectedRoute>
+            } 
+          />
+          <Route 
+            path="/upload-video" 
+            element={
+              <ProtectedRoute>
+                <VideoUploadPage />
               </ProtectedRoute>
             } 
           />

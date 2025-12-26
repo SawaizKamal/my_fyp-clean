@@ -44,6 +44,12 @@ function ChatPage() {
           <h1 className="text-3xl font-bold text-purple-400">Code Assistant</h1>
           <div className="flex items-center gap-4">
             <button
+              onClick={() => navigate('/upload-video')}
+              className="text-purple-400 hover:text-purple-300 px-4 py-2 rounded-lg hover:bg-gray-800 transition border border-purple-600"
+            >
+              🎬 Upload Video
+            </button>
+            <button
               onClick={() => navigate('/search')}
               className="text-gray-400 hover:text-white px-4 py-2 rounded-lg hover:bg-gray-800 transition"
             >
@@ -69,6 +75,19 @@ function ChatPage() {
         </div>
 
         <div className="max-w-4xl mx-auto">
+          {/* Info Banner */}
+          <div className="bg-purple-500 bg-opacity-10 border border-purple-500 rounded-xl p-4 mb-6">
+            <p className="text-purple-300 text-sm">
+              💡 <strong>New:</strong> Upload your own video and get AI-powered transcription with solution highlighting! 
+              <button
+                onClick={() => navigate('/upload-video')}
+                className="ml-2 underline hover:text-purple-200"
+              >
+                Try it now →
+              </button>
+            </p>
+          </div>
+          
           <form onSubmit={handleSubmit} className="mb-8">
             <div className="space-y-4">
               <div>
