@@ -532,6 +532,9 @@ async def transcribe_youtube_video(video_id: str, user=Depends(auth.get_current_
                     logger.error(f"DEBUG LOG ERROR: {log_e}")
                 # #endregion
                 
+                # Initialize transcript_data before try block
+                transcript_data = None
+                try:
                     transcript_data = video_transcript_analyzer.get_video_transcript(video_url)
                 except Exception as transcript_error:
                     logger.error(f"YouTube Transcript API error: {transcript_error}")
