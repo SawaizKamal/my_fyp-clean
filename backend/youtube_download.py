@@ -4,13 +4,15 @@ import json
 from pathlib import Path
 
 
-def download_youtube_video(url: str, output_path: str = "data/video.mp4") -> str:
+def download_youtube_video(url: str, output_path: str = "data/video.mp4", try_audio_only: bool = False) -> str:
     """
     Download a YouTube video using yt-dlp.
+    Tries multiple methods to bypass bot detection.
     
     Args:
         url: YouTube video URL
         output_path: Path where the video should be saved (default: "data/video.mp4")
+        try_audio_only: If True, download audio only (for transcription)
     
     Returns:
         Path to the downloaded video file
@@ -34,8 +36,15 @@ def download_youtube_video(url: str, output_path: str = "data/video.mp4") -> str
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     
     # yt-dlp options with anti-bot detection measures
+    if try_audio_only:
+        # For transcription, audio-only is sufficient and more likely to work
+        format_selector = 'bestaudio/best'
+        output_path = output_path.replace('.mp4', '.m4a') if output_path.endswith('.mp4') else output_path
+    else:
+        format_selector = 'bestvideo[height<=1080]+bestaudio/best[height<=1080]'
+    
     ydl_opts = {
-        'format': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]',
+        'format': format_selector,
         'outtmpl': output_path,
         'quiet': False,
         'no_warnings': False,
@@ -79,8 +88,8 @@ def download_youtube_video(url: str, output_path: str = "data/video.mp4") -> str
             ydl.download([url])
         
         # Find the actual downloaded file (yt-dlp might add extensions)
-        base_path = os.path.splitext(output_path)[0]  # Remove .mp4 extension
-        possible_extensions = ['.mp4', '.webm', '.mkv', '.avi']
+        base_path = os.path.splitext(output_path)[0]  # Remove extension
+        possible_extensions = ['.mp4', '.webm', '.mkv', '.avi', '.m4a', '.opus', '.mp3', '.wav']
         
         actual_file = None
         for ext in possible_extensions:

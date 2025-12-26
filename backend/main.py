@@ -480,44 +480,39 @@ async def transcribe_youtube_video(video_id: str, user=Depends(auth.get_current_
                 logger.info(f"Using cached video: {video_path}")
                 break
         
-        # Download if not found
+        # Download if not found - try multiple methods to get video for Whisper transcription
         if not video_path:
             video_path = base_path + '.mp4'  # Default extension
             logger.info(f"Downloading video: {video_id}")
+            download_success = False
+            
+            # Method 1: Try full video download
             try:
-                # #region agent log
-                log_path = os.path.join(BASE_DIR, '.cursor', 'debug.log')
+                logger.info("Attempting full video download...")
+                downloaded_path = youtube_download.download_youtube_video(video_url, video_path, try_audio_only=False)
+                video_path = downloaded_path
+                download_success = True
+                logger.info(f"✅ Full video download succeeded: {video_path}")
+            except Exception as full_download_error:
+                error_msg = str(full_download_error)
+                logger.warning(f"Full video download failed: {error_msg[:100]}")
+                
+                # Method 2: Try audio-only download (easier, less likely to be blocked, sufficient for Whisper)
                 try:
-                    os.makedirs(os.path.dirname(log_path), exist_ok=True)
-                    with open(log_path, 'a', encoding='utf-8') as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"main.py:474","message":"Before download attempt","data":{"video_id":video_id,"video_url":video_url},"timestamp":int(time.time()*1000)})+'\n')
-                except Exception as log_e:
-                    logger.error(f"DEBUG LOG ERROR: {log_e}")
-                # #endregion
-                downloaded_path = youtube_download.download_youtube_video(video_url, video_path)
-                video_path = downloaded_path  # Use the actual downloaded path
-                # #region agent log
-                log_path = os.path.join(BASE_DIR, '.cursor', 'debug.log')
-                try:
-                    os.makedirs(os.path.dirname(log_path), exist_ok=True)
-                    with open(log_path, 'a', encoding='utf-8') as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"main.py:476","message":"Download succeeded","data":{"video_path":video_path},"timestamp":int(time.time()*1000)})+'\n')
-                except Exception as log_e:
-                    logger.error(f"DEBUG LOG ERROR: {log_e}")
-                # #endregion
-            except Exception as download_error:
+                    logger.info("Attempting audio-only download for transcription...")
+                    audio_path = base_path + '.m4a'
+                    downloaded_path = youtube_download.download_youtube_video(video_url, audio_path, try_audio_only=True)
+                    video_path = downloaded_path
+                    download_success = True
+                    logger.info(f"✅ Audio-only download succeeded: {video_path}")
+                except Exception as audio_download_error:
+                    error_msg = str(audio_download_error)
+                    logger.warning(f"Audio-only download also failed: {error_msg[:100]}")
+                    download_error = audio_download_error
+            
+            if not download_success:
                 error_msg = str(download_error)
-                # #region agent log
-                log_path = os.path.join(BASE_DIR, '.cursor', 'debug.log')
-                try:
-                    os.makedirs(os.path.dirname(log_path), exist_ok=True)
-                    with open(log_path, 'a', encoding='utf-8') as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"F","location":"main.py:478","message":"Download exception caught","data":{"error_type":type(download_error).__name__,"error_msg":error_msg,"error_lower":error_msg.lower(),"has_bot":"bot" in error_msg.lower(),"has_cookies":"cookies" in error_msg.lower(),"has_signin":"sign in" in error_msg.lower()},"timestamp":int(time.time()*1000)})+'\n')
-                    logger.info(f"DEBUG: Logged download exception - {error_msg[:100]}")
-                except Exception as log_e:
-                    logger.error(f"DEBUG LOG ERROR: {log_e}")
-                # #endregion
-                logger.error(f"Video download failed: {error_msg}")
+                logger.error(f"Both full video and audio-only downloads failed. Last error: {error_msg}")
                 
                 # Always try to use YouTube transcript API as fallback when download fails
                 # This handles bot detection, network errors, and other download issues
