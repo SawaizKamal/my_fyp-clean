@@ -89,6 +89,7 @@ class TaskStatus(str, Enum):
     COMPILING = "compiling"
     COMPLETED = "completed"
     FAILED = "failed"
+    UPLOADING = "uploading"  # For local video uploads
 
 # ---------------- MODELS ----------------
 class UserRegister(BaseModel):
@@ -264,6 +265,127 @@ Example: [10.5 - 25.3]
         logger.error(f"Video processing error for task {task_id}: {e}", exc_info=True)
         tasks[task_id] = {"status": TaskStatus.FAILED, "error": str(e), "progress": 0}
 
+async def transcribe_uploaded_video_task(task_id: str, video_path: str, video_id: str, filename: str, user_query: Optional[str] = None):
+    """Background task to transcribe uploaded video"""
+    try:
+        logger.info(f"Starting transcription task: {task_id} for video: {video_id}")
+        tasks[task_id] = {"status": TaskStatus.UPLOADING, "progress": 10}
+        
+        # Verify file exists
+        if not os.path.exists(video_path):
+            raise Exception(f"Video file not found: {video_path}")
+        
+        tasks[task_id] = {"status": TaskStatus.TRANSCRIBING, "progress": 20}
+        logger.info("Loading Whisper model...")
+        model = get_whisper_model()
+        logger.info("Starting transcription...")
+        result = model.transcribe(video_path, verbose=False, condition_on_previous_text=False)
+        logger.info(f"Transcription complete. Found {len(result.get('segments', []))} segments")
+        
+        tasks[task_id] = {"status": TaskStatus.TRANSCRIBING, "progress": 60}
+        
+        # Format transcript with timestamps
+        transcript_segments = []
+        full_transcript_lines = []
+        
+        for seg in result.get("segments", []):
+            start = seg["start"]
+            end = seg["end"]
+            text = seg["text"].strip()
+            
+            transcript_segments.append({
+                "start": start,
+                "end": end,
+                "text": text,
+                "timestamp": f"{int(start // 60)}:{int(start % 60):02d}"
+            })
+            
+            full_transcript_lines.append(f"[{int(start // 60)}:{int(start % 60):02d}] {text}")
+        
+        full_transcript = "\n".join(full_transcript_lines)
+        logger.info(f"Formatted transcript with {len(transcript_segments)} segments")
+        
+        tasks[task_id] = {"status": TaskStatus.FILTERING, "progress": 80}
+        
+        # Use GPT-4 to identify solution segments if user_query is provided
+        solution_segments = []
+        if user_query:
+            logger.info(f"Identifying solution segments using GPT-4 for query: {user_query[:100]}")
+            solution_prompt = f"""Analyze this video transcript and identify segments that contain solutions, explanations, or key teaching moments relevant to the user's question.
+
+User's Question/Query: {user_query}
+
+Transcript:
+{full_transcript}
+
+Return a JSON array of segment indices (0-based) that contain solutions or key explanations. Focus on segments that:
+1. Explain how to solve the problem mentioned in the user's query
+2. Show code implementations or fixes
+3. Provide step-by-step instructions
+4. Explain concepts clearly related to the query
+5. Give practical examples that answer the question
+
+Skip segments that are:
+- Introductions or greetings
+- Filler words or pauses
+- Off-topic discussions
+- Outros or sign-offs
+- Not relevant to the user's query
+
+Return ONLY a JSON array like: [0, 5, 12, 23] or [] if no clear solutions found.
+Do not include any other text, just the JSON array."""
+            
+            try:
+                solution_response = await get_gpt4o_response(solution_prompt)
+                import json
+                import re
+                
+                json_match = re.search(r'\[[\d,\s]*\]', solution_response or "")
+                if json_match:
+                    solution_segments = json.loads(json_match.group())
+                else:
+                    try:
+                        solution_segments = json.loads(solution_response)
+                    except:
+                        solution_segments = []
+                
+                if not isinstance(solution_segments, list):
+                    solution_segments = []
+                solution_segments = [int(i) for i in solution_segments if isinstance(i, (int, str)) and str(i).isdigit()]
+                solution_segments = [i for i in solution_segments if 0 <= i < len(transcript_segments)]
+                
+                logger.info(f"Identified {len(solution_segments)} solution segments")
+            except Exception as e:
+                logger.warning(f"Failed to identify solution segments: {e}")
+                solution_segments = []
+        
+        # Store results in task
+        tasks[task_id] = {
+            "status": TaskStatus.COMPLETED,
+            "progress": 100,
+            "video_id": video_id,
+            "video_url": f"/video/upload/{video_id}",
+            "filename": filename,
+            "segments": transcript_segments,
+            "solution_segments": solution_segments,
+            "full_transcript": full_transcript,
+            "duration": result.get("duration", 0),
+            "language": result.get("language", "unknown"),
+            "total_segments": len(transcript_segments)
+        }
+        logger.info(f"Transcription task {task_id} completed successfully")
+        
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        logger.error(f"Transcription task error for {task_id}: {e}")
+        logger.error(f"Full traceback: {error_details}")
+        tasks[task_id] = {
+            "status": TaskStatus.FAILED,
+            "error": str(e),
+            "progress": 0
+        }
+
 # ---------------- AUTH ROUTES ----------------
 @app.post("/api/auth/register")
 async def register(user: UserRegister):
@@ -365,20 +487,19 @@ async def video(task_id: str, user=Depends(auth.get_current_user)):
 async def transcribe_local_video(
     file: UploadFile = File(...),
     user_query: Optional[str] = Form(None),
+    bg: BackgroundTasks = BackgroundTasks(),
     user=Depends(auth.get_current_user)
 ):
     """
     Transcribe a locally uploaded video file with GPT-4 solution segment detection.
-    Accepts video file upload and returns transcript with timestamps and solution segments.
+    Uses background tasks to avoid timeout on Render.
+    Returns task_id immediately, use /api/transcribe/status/{task_id} to check progress.
     Max file size: 500MB
     
     Args:
         file: Video file to upload
         user_query: Optional query/question to help identify solution segments
     """
-    import tempfile
-    import shutil
-    
     # Validate file type
     if not file.content_type or not file.content_type.startswith('video/'):
         raise HTTPException(400, "File must be a video")
@@ -386,7 +507,8 @@ async def transcribe_local_video(
     # File size limit: 500MB (for transcription)
     MAX_FILE_SIZE = 500 * 1024 * 1024  # 500MB
     
-    # Save uploaded file to a persistent location for playback
+    # Generate IDs
+    task_id = str(uuid.uuid4())
     video_id = str(uuid.uuid4())
     
     # Preserve original file extension if available, otherwise default to .mp4
@@ -417,98 +539,18 @@ async def transcribe_local_video(
         logger.info(f"Video file exists: {os.path.exists(video_path)}")
         logger.info(f"Video file size on disk: {os.path.getsize(video_path) if os.path.exists(video_path) else 0} bytes")
         
-        # Use cached Whisper model
-        logger.info("Loading Whisper model...")
-        model = get_whisper_model()
-        logger.info("Starting transcription...")
-        result = model.transcribe(video_path, verbose=False)
-        logger.info(f"Transcription complete. Found {len(result.get('segments', []))} segments")
+        # Initialize task status
+        tasks[task_id] = {"status": TaskStatus.PENDING, "progress": 0}
         
-        # Format transcript with timestamps
-        transcript_segments = []
-        full_transcript_lines = []
+        # Start background transcription task
+        bg.add_task(transcribe_uploaded_video_task, task_id, video_path, video_id, file.filename, user_query)
+        logger.info(f"Transcription task {task_id} started for video {video_id}")
         
-        for seg in result.get("segments", []):
-            start = seg["start"]
-            end = seg["end"]
-            text = seg["text"].strip()
-            
-            transcript_segments.append({
-                "start": start,
-                "end": end,
-                "text": text,
-                "timestamp": f"{int(start // 60)}:{int(start % 60):02d}"
-            })
-            
-            full_transcript_lines.append(f"[{int(start // 60)}:{int(start % 60):02d}] {text}")
-        
-        full_transcript = "\n".join(full_transcript_lines)
-        logger.info(f"Formatted transcript with {len(transcript_segments)} segments")
-        
-        # Use GPT-4 to identify solution segments if user_query is provided
-        solution_segments = []
-        if user_query:
-            logger.info(f"Identifying solution segments using GPT-4 for query: {user_query[:100]}")
-            solution_prompt = f"""Analyze this video transcript and identify segments that contain solutions, explanations, or key teaching moments relevant to the user's question.
-
-User's Question/Query: {user_query}
-
-Transcript:
-{full_transcript}
-
-Return a JSON array of segment indices (0-based) that contain solutions or key explanations. Focus on segments that:
-1. Explain how to solve the problem mentioned in the user's query
-2. Show code implementations or fixes
-3. Provide step-by-step instructions
-4. Explain concepts clearly related to the query
-5. Give practical examples that answer the question
-
-Skip segments that are:
-- Introductions or greetings
-- Filler words or pauses
-- Off-topic discussions
-- Outros or sign-offs
-- Not relevant to the user's query
-
-Return ONLY a JSON array like: [0, 5, 12, 23] or [] if no clear solutions found.
-Do not include any other text, just the JSON array."""
-            
-            try:
-                solution_response = await get_gpt4o_response(solution_prompt)
-                import json
-                import re
-                
-                # Find JSON array in response
-                json_match = re.search(r'\[[\d,\s]*\]', solution_response or "")
-                if json_match:
-                    solution_segments = json.loads(json_match.group())
-                else:
-                    try:
-                        solution_segments = json.loads(solution_response)
-                    except:
-                        solution_segments = []
-                
-                # Ensure solution_segments is a list of integers
-                if not isinstance(solution_segments, list):
-                    solution_segments = []
-                solution_segments = [int(i) for i in solution_segments if isinstance(i, (int, str)) and str(i).isdigit()]
-                solution_segments = [i for i in solution_segments if 0 <= i < len(transcript_segments)]
-                
-                logger.info(f"Identified {len(solution_segments)} solution segments")
-            except Exception as e:
-                logger.warning(f"Failed to identify solution segments: {e}")
-                solution_segments = []
-        
+        # Return task_id immediately (non-blocking)
         return {
-            "video_id": video_id,
-            "video_url": f"/video/upload/{video_id}",
-            "filename": file.filename,
-            "segments": transcript_segments,
-            "solution_segments": solution_segments,
-            "full_transcript": full_transcript,
-            "duration": result.get("duration", 0),
-            "language": result.get("language", "unknown"),
-            "total_segments": len(transcript_segments)
+            "task_id": task_id,
+            "status": "pending",
+            "message": "Video uploaded. Transcription in progress. Use /api/transcribe/status/{task_id} to check progress."
         }
         
     except HTTPException:
@@ -516,7 +558,7 @@ Do not include any other text, just the JSON array."""
     except Exception as e:
         import traceback
         error_details = traceback.format_exc()
-        logger.error(f"Transcription error: {e}")
+        logger.error(f"Video upload error: {e}")
         logger.error(f"Full traceback: {error_details}")
         # Clean up video file on error
         if os.path.exists(video_path):
@@ -524,7 +566,52 @@ Do not include any other text, just the JSON array."""
                 os.unlink(video_path)
             except:
                 pass
-        raise HTTPException(500, f"Transcription failed: {str(e)}")
+        raise HTTPException(500, f"Upload failed: {str(e)}")
+
+
+@app.get("/api/transcribe/status/{task_id}")
+async def get_transcription_status(task_id: str, user=Depends(auth.get_current_user)):
+    """
+    Get transcription status and results for a task.
+    Returns the full transcript data when status is 'completed'.
+    """
+    if task_id not in tasks:
+        raise HTTPException(404, "Task not found")
+    
+    task = tasks[task_id]
+    
+    # If completed, return full results
+    if task.get("status") == TaskStatus.COMPLETED:
+        return {
+            "task_id": task_id,
+            "status": "completed",
+            "progress": task.get("progress", 100),
+            "video_id": task.get("video_id"),
+            "video_url": task.get("video_url"),
+            "filename": task.get("filename"),
+            "segments": task.get("segments", []),
+            "solution_segments": task.get("solution_segments", []),
+            "full_transcript": task.get("full_transcript", ""),
+            "duration": task.get("duration", 0),
+            "language": task.get("language", "unknown"),
+            "total_segments": task.get("total_segments", 0)
+        }
+    
+    # If failed, return error
+    if task.get("status") == TaskStatus.FAILED:
+        return {
+            "task_id": task_id,
+            "status": "failed",
+            "error": task.get("error", "Unknown error"),
+            "progress": task.get("progress", 0)
+        }
+    
+    # Otherwise return current status
+    return {
+        "task_id": task_id,
+        "status": task.get("status", "pending"),
+        "progress": task.get("progress", 0)
+    }
 
 
 @app.get("/api/video/upload/{video_id}")

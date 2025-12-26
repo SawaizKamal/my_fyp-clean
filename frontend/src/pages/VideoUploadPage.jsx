@@ -7,7 +7,9 @@ function VideoUploadPage() {
   const navigate = useNavigate();
   const { user, isAuthenticated, loading: authLoading, token } = useAuth();
   // #region agent log
-  fetch('http://127.0.0.1:7243/ingest/437f7cb7-d9e7-437e-82fe-e00f0e39dcc2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VideoUploadPage.jsx:9',message:'Component initialized',data:{hasUser:!!user,isAuthenticated,hasToken:!!token,authLoading},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  if (process.env.NODE_ENV === 'development') {
+    fetch('http://127.0.0.1:7243/ingest/437f7cb7-d9e7-437e-82fe-e00f0e39dcc2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VideoUploadPage.jsx:9',message:'Component initialized',data:{hasUser:!!user,isAuthenticated,hasToken:!!token,authLoading},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+  }
   // #endregion
   const fileInputRef = useRef(null);
   const videoRef = useRef(null);
@@ -19,6 +21,8 @@ function VideoUploadPage() {
   const [currentTime, setCurrentTime] = useState(0);
   const [userQuery, setUserQuery] = useState('');
   const [progress, setProgress] = useState(0);
+  const [taskId, setTaskId] = useState(null);
+  const pollIntervalRef = useRef(null);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -26,6 +30,15 @@ function VideoUploadPage() {
       navigate('/login');
     }
   }, [authLoading, isAuthenticated, navigate]);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, []);
 
   // Update current time from video player
   useEffect(() => {
@@ -92,9 +105,13 @@ function VideoUploadPage() {
       }
       
       // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/437f7cb7-d9e7-437e-82fe-e00f0e39dcc2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VideoUploadPage.jsx:91',message:'Before API call',data:{hasToken:!!token,isAuthenticated,fileSelected:!!file,hasUserQuery:!!userQuery.trim()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      if (process.env.NODE_ENV === 'development') {
+        fetch('http://127.0.0.1:7243/ingest/437f7cb7-d9e7-437e-82fe-e00f0e39dcc2',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VideoUploadPage.jsx:91',message:'Before API call',data:{hasToken:!!token,isAuthenticated,fileSelected:!!file,hasUserQuery:!!userQuery.trim()},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      }
       // #endregion
-      console.log('Uploading video with token:', token ? 'Present' : 'Missing');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Uploading video with token:', token ? 'Present' : 'Missing');
+      }
 
       // Simulate progress updates (since we can't get real-time progress from Whisper)
       progressInterval = setInterval(() => {
@@ -107,9 +124,58 @@ function VideoUploadPage() {
       // Note: Don't set Content-Type header - axios will set it automatically with boundary for FormData
       const response = await api.post('/transcribe/local', formData);
 
-      if (progressInterval) clearInterval(progressInterval);
-      setProgress(100);
-      setTranscript(response.data);
+      // Check if we got a task_id (background task) or immediate results
+      if (response.data.task_id) {
+        // Background task - start polling
+        setTaskId(response.data.task_id);
+        if (progressInterval) clearInterval(progressInterval);
+        
+        // Poll for status
+        pollIntervalRef.current = setInterval(async () => {
+          try {
+            const statusResponse = await api.get(`/transcribe/status/${response.data.task_id}`);
+            const status = statusResponse.data;
+            
+            setProgress(status.progress || 0);
+            
+            if (status.status === 'completed') {
+              if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+              setProgress(100);
+              setTranscript({
+                video_id: status.video_id,
+                video_url: status.video_url,
+                filename: status.filename,
+                segments: status.segments,
+                solution_segments: status.solution_segments,
+                full_transcript: status.full_transcript,
+                duration: status.duration,
+                language: status.language,
+                total_segments: status.total_segments
+              });
+              setUploading(false);
+              setTranscribing(false);
+            } else if (status.status === 'failed') {
+              if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+              setError(status.error || 'Transcription failed');
+              setUploading(false);
+              setTranscribing(false);
+            }
+          } catch (pollErr) {
+            console.error('Polling error:', pollErr);
+            // Continue polling on error
+          }
+        }, 2000); // Poll every 2 seconds
+        
+        // Clean up polling on component unmount or error
+        // Store in a ref or handle cleanup in finally block
+      } else {
+        // Immediate results (fallback for non-Render deployments)
+        if (progressInterval) clearInterval(progressInterval);
+        setProgress(100);
+        setTranscript(response.data);
+        setUploading(false);
+        setTranscribing(false);
+      }
       
     } catch (err) {
       if (progressInterval) clearInterval(progressInterval);
