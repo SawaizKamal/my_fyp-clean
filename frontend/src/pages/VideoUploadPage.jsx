@@ -5,7 +5,7 @@ import api from '../api/config';
 
 function VideoUploadPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isAuthenticated, loading: authLoading } = useAuth();
   const fileInputRef = useRef(null);
   const videoRef = useRef(null);
   const [file, setFile] = useState(null);
@@ -16,6 +16,13 @@ function VideoUploadPage() {
   const [currentTime, setCurrentTime] = useState(0);
   const [userQuery, setUserQuery] = useState('');
   const [progress, setProgress] = useState(0);
+
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      navigate('/login');
+    }
+  }, [authLoading, isAuthenticated, navigate]);
 
   // Update current time from video player
   useEffect(() => {
@@ -57,11 +64,20 @@ function VideoUploadPage() {
       return;
     }
 
+    // Check if user is authenticated
+    if (!isAuthenticated) {
+      setError('You must be logged in to upload videos. Redirecting to login...');
+      setTimeout(() => navigate('/login'), 2000);
+      return;
+    }
+
     setError(null);
     setUploading(true);
     setTranscribing(true);
     setProgress(0);
     setTranscript(null);
+
+    let progressInterval = null;
 
     try {
       const formData = new FormData();
@@ -71,28 +87,45 @@ function VideoUploadPage() {
       if (userQuery.trim()) {
         formData.append('user_query', userQuery.trim());
       }
+      
+      console.log('Uploading video with token:', token ? 'Present' : 'Missing');
 
       // Simulate progress updates (since we can't get real-time progress from Whisper)
-      const progressInterval = setInterval(() => {
+      progressInterval = setInterval(() => {
         setProgress(prev => {
           if (prev < 90) return prev + 5;
           return prev;
         });
       }, 500);
 
-      const response = await api.post('/transcribe/local', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      // Note: Don't set Content-Type header - axios will set it automatically with boundary for FormData
+      const response = await api.post('/transcribe/local', formData);
 
-      clearInterval(progressInterval);
+      if (progressInterval) clearInterval(progressInterval);
       setProgress(100);
       setTranscript(response.data);
       
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to transcribe video. Please try again.');
-      console.error(err);
+      if (progressInterval) clearInterval(progressInterval);
+      console.error('Transcription error:', err);
+      console.error('Error response:', err.response);
+      
+      // Handle different error status codes
+      if (err.response?.status === 401) {
+        setError('Your session has expired. Redirecting to login...');
+        setTimeout(() => {
+          navigate('/login');
+        }, 2000);
+        return;
+      }
+      
+      if (err.response?.status === 502 || err.response?.status === 503) {
+        setError('Server is temporarily unavailable. Please try again in a few moments.');
+        return;
+      }
+      
+      const errorMessage = err.response?.data?.detail || err.response?.data?.message || err.message || 'Failed to transcribe video. Please try again.';
+      setError(errorMessage);
     } finally {
       setUploading(false);
       setTranscribing(false);
@@ -119,6 +152,23 @@ function VideoUploadPage() {
   const isCurrentSegment = (segment) => {
     return currentTime >= segment.start && currentTime <= segment.end;
   };
+
+  // Show loading while checking authentication
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0a] text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-purple-600 mx-auto mb-4"></div>
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render if not authenticated (will redirect)
+  if (!isAuthenticated) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white">
