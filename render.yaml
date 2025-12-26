@@ -3,6 +3,8 @@ services:
     name: fullstack-app
     buildCommand: python build.py
     startCommand: cd backend && python -m uvicorn main:app --host 0.0.0.0 --port $PORT
+    # Alternative build command (if build.py fails):
+    # buildCommand: cd frontend && npm install && npm run build && cd .. && cp -r frontend/dist backend/dist_build && cd backend && pip install -r requirements.txt
     envVars:
       - key: PYTHON_VERSION
         value: 3.10.0
