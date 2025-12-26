@@ -395,23 +395,34 @@ async def transcribe_local_video(
     video_path = os.path.join(DATA_DIR, f"{video_id}{file_extension}")
     
     try:
+        logger.info(f"Received video upload request: {file.filename}, content_type: {file.content_type}")
+        
         # Read file content first to check size
         content = await file.read()
         file_size = len(content)
+        logger.info(f"File size: {file_size} bytes ({file_size / (1024*1024):.2f} MB)")
         
         if file_size > MAX_FILE_SIZE:
             raise HTTPException(400, f"File too large. Maximum size is {MAX_FILE_SIZE / (1024*1024):.0f}MB")
+        
+        if file_size == 0:
+            raise HTTPException(400, "Uploaded file is empty")
         
         # Save video file for later playback
         os.makedirs(DATA_DIR, exist_ok=True)
         with open(video_path, 'wb') as f:
             f.write(content)
         
-        logger.info(f"Transcribing local video: {file.filename} (ID: {video_id})")
+        logger.info(f"Video saved to: {video_path}")
+        logger.info(f"Video file exists: {os.path.exists(video_path)}")
+        logger.info(f"Video file size on disk: {os.path.getsize(video_path) if os.path.exists(video_path) else 0} bytes")
         
         # Use cached Whisper model
+        logger.info("Loading Whisper model...")
         model = get_whisper_model()
+        logger.info("Starting transcription...")
         result = model.transcribe(video_path, verbose=False)
+        logger.info(f"Transcription complete. Found {len(result.get('segments', []))} segments")
         
         # Format transcript with timestamps
         transcript_segments = []
@@ -432,6 +443,7 @@ async def transcribe_local_video(
             full_transcript_lines.append(f"[{int(start // 60)}:{int(start % 60):02d}] {text}")
         
         full_transcript = "\n".join(full_transcript_lines)
+        logger.info(f"Formatted transcript with {len(transcript_segments)} segments")
         
         # Use GPT-4 to identify solution segments if user_query is provided
         solution_segments = []
@@ -502,7 +514,10 @@ Do not include any other text, just the JSON array."""
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Transcription error: {e}", exc_info=True)
+        import traceback
+        error_details = traceback.format_exc()
+        logger.error(f"Transcription error: {e}")
+        logger.error(f"Full traceback: {error_details}")
         # Clean up video file on error
         if os.path.exists(video_path):
             try:
