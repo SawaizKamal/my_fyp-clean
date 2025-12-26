@@ -94,36 +94,57 @@ def get_video_transcript(video_url: str) -> Optional[List[Dict]]:
         # Try to get transcript - first try without language code (auto-detect)
         try:
             transcript = YouTubeTranscriptApi.get_transcript(video_id)
+            print(f"✅ Successfully fetched transcript for {video_id}")
             return transcript
-        except Exception:
+        except Exception as e1:
+            print(f"⚠️ Direct transcript fetch failed for {video_id}: {e1}")
             # If that fails, try to get available transcripts and use the first one
             try:
                 transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+                print(f"📋 Found transcript list for {video_id}, trying to fetch...")
+                
                 # Try to get manually created transcript first, then auto-generated
                 transcript = None
                 for t in transcript_list:
                     try:
                         transcript = t.fetch()
+                        print(f"✅ Successfully fetched {t.language_code} transcript (manual)")
                         break
-                    except:
+                    except Exception as fetch_err:
+                        print(f"⚠️ Failed to fetch {t.language_code}: {fetch_err}")
                         continue
                 
                 # If no manual transcript, try auto-generated
                 if not transcript:
                     for t in transcript_list:
                         try:
-                            transcript = t.translate('en').fetch() if hasattr(t, 'translate') else None
-                            if transcript:
+                            if hasattr(t, 'translate'):
+                                transcript = t.translate('en').fetch()
+                                print(f"✅ Successfully fetched translated transcript")
                                 break
-                        except:
+                        except Exception as translate_err:
+                            print(f"⚠️ Translation failed: {translate_err}")
                             continue
                 
-                return transcript
+                if transcript:
+                    return transcript
+                else:
+                    print(f"❌ No transcript could be fetched from available list")
+                    return None
             except Exception as e2:
-                print(f"❌ Transcript fetch failed for {video_id}: {e2}")
+                print(f"❌ Transcript list failed for {video_id}: {e2}")
+                # Try with common language codes as last resort
+                common_languages = ['en', 'en-US', 'en-GB']
+                for lang in common_languages:
+                    try:
+                        transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=[lang])
+                        print(f"✅ Successfully fetched transcript with language code: {lang}")
+                        return transcript
+                    except:
+                        continue
                 return None
     except Exception as e:
-        print(f"❌ Transcript fetch failed for {video_id}: {e}")
+        print(f"❌ Transcript fetch completely failed for {video_id}: {e}")
         return None
 
 

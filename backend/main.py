@@ -535,9 +535,14 @@ async def transcribe_youtube_video(video_id: str, user=Depends(auth.get_current_
                 # Initialize transcript_data before try block
                 transcript_data = None
                 try:
+                    logger.info(f"Attempting to fetch transcript for video: {video_id}")
                     transcript_data = video_transcript_analyzer.get_video_transcript(video_url)
+                    if transcript_data:
+                        logger.info(f"Successfully fetched transcript: {len(transcript_data)} segments")
+                    else:
+                        logger.warning(f"Transcript fetch returned None for video: {video_id}")
                 except Exception as transcript_error:
-                    logger.error(f"YouTube Transcript API error: {transcript_error}")
+                    logger.error(f"YouTube Transcript API error: {transcript_error}", exc_info=True)
                     transcript_data = None
                 
                 # #region agent log
