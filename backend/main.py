@@ -43,6 +43,13 @@ database.init_db()
 
 app = FastAPI()
 
+# Check ffmpeg availability on startup
+try:
+    from . import check_ffmpeg_available
+except ImportError:
+    # Function defined below, will check after definition
+    pass
+
 # ---------------- CACHED MODELS ----------------
 # Cache Whisper model to avoid reloading on each request
 _whisper_model_cache = None
@@ -69,9 +76,23 @@ def health():
         # Check DB connection
         with database.engine.connect() as conn:
             conn.execute(database.text("SELECT 1"))
-        return {"status": "ok", "database": "connected", "model": "gpt-4o"}
+        
+        # Check ffmpeg availability
+        ffmpeg_available, ffmpeg_error = check_ffmpeg_available()
+        
+        health_status = {
+            "status": "ok",
+            "database": "connected",
+            "model": "gpt-4o",
+            "ffmpeg_available": ffmpeg_available
+        }
+        
+        if not ffmpeg_available:
+            health_status["ffmpeg_warning"] = ffmpeg_error
+        
+        return health_status
     except Exception as e:
-        return {"status": "error", "database": str(e)}
+        return {"status": "error", "database": str(e), "ffmpeg_available": False}
 
 app.add_middleware(
     CORSMiddleware,
@@ -215,6 +236,49 @@ async def search_youtube(query: str):
         return []  # Return empty list on error
 
 # ---------------- VIDEO PROCESSING HELPERS ----------------
+def check_ffmpeg_available() -> tuple[bool, str]:
+    """
+    Check if ffmpeg and ffprobe are available in the system PATH.
+    Returns: (is_available, error_message)
+    """
+    try:
+        # Check ffmpeg
+        result = subprocess.run(
+            ['ffmpeg', '-version'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode != 0:
+            return False, "ffmpeg is installed but not working correctly"
+        
+        # Check ffprobe
+        result = subprocess.run(
+            ['ffprobe', '-version'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode != 0:
+            return False, "ffprobe is installed but not working correctly"
+        
+        return True, ""
+    except FileNotFoundError:
+        return False, "ffmpeg/ffprobe not found in PATH. Please install ffmpeg and add it to your system PATH."
+    except subprocess.TimeoutExpired:
+        return False, "ffmpeg/ffprobe check timed out"
+    except Exception as e:
+        return False, f"Error checking ffmpeg: {str(e)}"
+
+# Check ffmpeg on module load (after function definition)
+ffmpeg_available, ffmpeg_error = check_ffmpeg_available()
+if not ffmpeg_available:
+    logger.warning(f"⚠️  ffmpeg not available: {ffmpeg_error}")
+    logger.warning("⚠️  Video upload features will not work until ffmpeg is installed.")
+    logger.warning("⚠️  See LOCALHOST_SETUP.md for installation instructions.")
+else:
+    logger.info("✅ ffmpeg and ffprobe are available")
+
 def get_video_duration(video_path: str) -> float:
     """Get video duration in seconds using ffprobe (low memory)"""
     try:
@@ -480,7 +544,8 @@ Example: [10.5 - 25.3]
 async def transcribe_uploaded_video_task(task_id: str, video_path: str, video_id: str, filename: str, user_query: Optional[str] = None):
     """
     Background task to transcribe uploaded video using chunked processing.
-    Processes video in 30-second chunks for low-RAM efficiency and live updates.
+    Processes video in 20-second chunks sequentially for low-RAM efficiency and live updates.
+    Never loads full video into memory. Deletes temp files immediately after each chunk.
     """
     temp_audio_dir = None
     try:
@@ -514,8 +579,8 @@ async def transcribe_uploaded_video_task(task_id: str, video_path: str, video_id
         model = get_whisper_model("base")  # Use base model (can be changed to "tiny" for even lower RAM)
         logger.info("Whisper model loaded")
         
-        # Step 3: Process video in 30-second chunks
-        CHUNK_DURATION = 30.0  # 30 seconds per chunk
+        # Step 3: Process video in 20-second chunks (for low-resource servers)
+        CHUNK_DURATION = 20.0  # 20 seconds per chunk (≤20s as required)
         temp_audio_dir = tempfile.mkdtemp(prefix=f"whisper_chunks_{task_id}_")
         logger.info(f"Created temp directory: {temp_audio_dir}")
         
@@ -570,16 +635,19 @@ async def transcribe_uploaded_video_task(task_id: str, video_path: str, video_id
                 logger.info(f"Chunk {chunk_index + 1} transcribed: {len(chunk_segments)} segments")
                 
             except Exception as e:
-                logger.warning(f"Transcription failed for chunk {chunk_index + 1}: {e}")
-                # Continue with next chunk instead of failing completely
-                pass
+                # Log error but continue with next chunk (graceful degradation)
+                logger.error(f"Transcription failed for chunk {chunk_index + 1}: {e}")
+                # Don't fail entire process - continue with next chunk
+                # The error will be visible in final transcript (missing segment)
             
-            # Clean up audio chunk file immediately to save space
+            # CRITICAL: Clean up audio chunk file immediately after processing (never keep in memory)
             try:
                 if os.path.exists(audio_chunk_path):
                     os.unlink(audio_chunk_path)
-            except:
-                pass
+                    logger.debug(f"Deleted temp chunk file: {audio_chunk_path}")
+            except Exception as cleanup_err:
+                logger.warning(f"Failed to delete temp chunk file {audio_chunk_path}: {cleanup_err}")
+                # Continue - don't fail entire process on cleanup error
             
             current_time = chunk_end
             chunk_index += 1
@@ -646,22 +714,29 @@ async def transcribe_uploaded_video_task(task_id: str, video_path: str, video_id
         logger.error(f"Transcription task error for {task_id}: {e}")
         logger.error(f"Full traceback: {error_details}")
         
-        # Provide helpful error message with suggestions
+        # Determine error type and provide clear message (502 Bad Gateway for backend errors)
         error_message = str(e)
-        if "duration" in error_message.lower() or "5 minutes" in error_message:
+        error_type = "processing"
+        
+        if "ffmpeg" in error_message.lower() or "ffprobe" in error_message.lower():
+            error_type = "backend_tools"
+            suggestion = "Server configuration issue: ffmpeg not available. Please contact administrator."
+        elif "duration" in error_message.lower() or "5 minutes" in error_message:
+            error_type = "validation"
             suggestion = "Please upload a video that is 5 minutes or shorter."
-        elif "ffmpeg" in error_message.lower() or "ffprobe" in error_message.lower():
-            suggestion = "Server configuration issue. Please contact support."
         elif "format" in error_message.lower() or "codec" in error_message.lower():
-            suggestion = "Try converting your video to MP4 format with H.264 codec."
+            error_type = "format"
+            suggestion = "Video format may be unsupported. Try converting to MP4 with H.264 codec."
         elif "memory" in error_message.lower() or "ram" in error_message.lower():
-            suggestion = "Video processing requires more resources. Try a shorter or lower quality video."
+            error_type = "resources"
+            suggestion = "Server resources insufficient. Try a shorter or lower quality video."
         else:
-            suggestion = "Please check the video file and try again, or contact support if the issue persists."
+            suggestion = "Backend processing failed. Please try again or contact support."
         
         tasks[task_id] = {
             "status": TaskStatus.FAILED,
             "error": error_message,
+            "error_type": error_type,
             "error_suggestion": suggestion,
             "progress": 0
         }
@@ -777,105 +852,170 @@ async def transcribe_local_video(
     file: UploadFile = File(...),
     user_query: Optional[str] = Form(None),
     bg: BackgroundTasks = BackgroundTasks(),
-    user=Depends(auth.get_current_user)
+    user=Depends(auth.get_current_user)  # Authentication checked FIRST by FastAPI
 ):
     """
-    Transcribe a locally uploaded video file with GPT-4 solution segment detection.
+    Transcribe a locally uploaded video/audio file with GPT-4 solution segment detection.
     Uses background tasks to avoid timeout on Render.
     Returns task_id immediately, use /api/transcribe/status/{task_id} to check progress.
-    Max file size: 500MB
+    Max file size: 500MB, Max duration: 5 minutes
     
     Args:
-        file: Video file to upload
+        file: Video or audio file to upload
         user_query: Optional query/question to help identify solution segments
-    """
-    # Validate file type
-    if not file.content_type or not file.content_type.startswith('video/'):
-        raise HTTPException(400, "File must be a video")
     
-    # File size limit: 500MB (for transcription)
+    Returns:
+        task_id: Use this to check transcription status
+        
+    Errors:
+        401: Authentication failed (handled by Depends)
+        400: Invalid file (missing, wrong type, too large, too long)
+        502: Backend processing error (ffmpeg, transcription)
+    """
+    # Step 1: Validate file exists and is received
+    if not file or not file.filename:
+        raise HTTPException(
+            status_code=400,
+            detail="No file received. Please upload a video or audio file."
+        )
+    
+    # Step 2: Validate file type (accept video/ and audio/)
+    if not file.content_type:
+        # Try to infer from extension as fallback
+        filename_lower = file.filename.lower()
+        video_extensions = ['.mp4', '.webm', '.mkv', '.avi', '.mov', '.m4v', '.flv']
+        audio_extensions = ['.mp3', '.wav', '.m4a', '.ogg', '.flac', '.aac']
+        ext = os.path.splitext(filename_lower)[1]
+        if ext not in video_extensions + audio_extensions:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid file type. Accepted formats: video (MP4, WebM, MKV, AVI, MOV) or audio (MP3, WAV, M4A, OGG)."
+            )
+    elif not (file.content_type.startswith('video/') or file.content_type.startswith('audio/')):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file type: {file.content_type}. Please upload a video or audio file."
+        )
+    
+    # Step 3: Validate file size
     MAX_FILE_SIZE = 500 * 1024 * 1024  # 500MB
     
     # Generate IDs
     task_id = str(uuid.uuid4())
     video_id = str(uuid.uuid4())
     
-    # Preserve original file extension if available, otherwise default to .mp4
-    original_filename = file.filename or "video"
+    # Preserve original file extension
+    original_filename = file.filename
     file_extension = os.path.splitext(original_filename)[1] or ".mp4"
     video_path = os.path.join(DATA_DIR, f"{video_id}{file_extension}")
     
     try:
-        logger.info(f"Received video upload request: {file.filename}, content_type: {file.content_type}")
+        logger.info(f"Processing upload request: user={user.get('username')}, file={original_filename}, type={file.content_type}")
         
-        # Read file content first to check size
+        # Read file content to check size
         content = await file.read()
         file_size = len(content)
         logger.info(f"File size: {file_size} bytes ({file_size / (1024*1024):.2f} MB)")
         
-        if file_size > MAX_FILE_SIZE:
-            raise HTTPException(400, f"File too large. Maximum size is {MAX_FILE_SIZE / (1024*1024):.0f}MB")
-        
+        # Validate file size
         if file_size == 0:
-            raise HTTPException(400, "Uploaded file is empty")
+            raise HTTPException(
+                status_code=400,
+                detail="Uploaded file is empty. Please upload a valid video or audio file."
+            )
         
-        # Save video file for later playback
+        if file_size > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File too large ({file_size / (1024*1024):.1f} MB). Maximum size is {MAX_FILE_SIZE / (1024*1024):.0f} MB."
+            )
+        
+        # Step 4: Save file to disk
         os.makedirs(DATA_DIR, exist_ok=True)
-        with open(video_path, 'wb') as f:
-            f.write(content)
+        try:
+            with open(video_path, 'wb') as f:
+                f.write(content)
+            logger.info(f"File saved to: {video_path}")
+        except Exception as e:
+            logger.error(f"Failed to save file: {e}")
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to save uploaded file: {str(e)}"
+            )
         
-        logger.info(f"Video saved to: {video_path}")
-        logger.info(f"Video file exists: {os.path.exists(video_path)}")
-        logger.info(f"Video file size on disk: {os.path.getsize(video_path) if os.path.exists(video_path) else 0} bytes")
-        
-        # Check video duration (max 5 minutes) - do this before starting background task
+        # Step 5: Validate video duration (max 5 minutes) - BEFORE starting background task
         try:
             duration = get_video_duration(video_path)
             MAX_DURATION = 5 * 60  # 5 minutes
             if duration > MAX_DURATION:
-                # Clean up file
-                if os.path.exists(video_path):
-                    os.unlink(video_path)
+                # Clean up file immediately
+                try:
+                    if os.path.exists(video_path):
+                        os.unlink(video_path)
+                except:
+                    pass
                 raise HTTPException(
-                    400,
-                    f"Video duration ({duration/60:.1f} minutes) exceeds maximum allowed (5 minutes). "
-                    f"Please upload a shorter video or trim it to 5 minutes or less."
+                    status_code=400,
+                    detail=f"Video duration ({duration/60:.1f} minutes) exceeds maximum allowed (5 minutes). Please upload a shorter video."
                 )
-            logger.info(f"Video duration validated: {duration:.2f} seconds")
+            logger.info(f"Duration validated: {duration:.2f} seconds")
         except HTTPException:
+            # Re-raise HTTP exceptions (validation errors)
             raise
         except Exception as e:
-            logger.warning(f"Could not check video duration (will check in background task): {e}")
-            # Continue - will be checked in background task
+            # If duration check fails (ffmpeg issues), clean up and return 502
+            logger.error(f"Failed to check video duration: {e}")
+            try:
+                if os.path.exists(video_path):
+                    os.unlink(video_path)
+            except:
+                pass
+            error_msg = str(e)
+            if "ffprobe not found" in error_msg or "ffmpeg not found" in error_msg:
+                raise HTTPException(
+                    status_code=502,
+                    detail="Video processing tools (ffmpeg) not available on server. Please contact administrator."
+                )
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to validate video file: {error_msg}"
+            )
         
-        # Initialize task status
+        # Step 6: Initialize task and start background processing
         tasks[task_id] = {"status": TaskStatus.PENDING, "progress": 0, "segments": []}
         
         # Start background transcription task
-        bg.add_task(transcribe_uploaded_video_task, task_id, video_path, video_id, file.filename, user_query)
-        logger.info(f"Transcription task {task_id} started for video {video_id}")
+        bg.add_task(transcribe_uploaded_video_task, task_id, video_path, video_id, original_filename, user_query)
+        logger.info(f"Transcription task {task_id} started for file {video_id}")
         
         # Return task_id immediately (non-blocking)
         return {
             "task_id": task_id,
             "status": "pending",
-            "message": "Video uploaded. Transcription in progress. Use /api/transcribe/status/{task_id} to check progress."
+            "message": "File uploaded. Transcription in progress. Use /api/transcribe/status/{task_id} to check progress."
         }
         
     except HTTPException:
+        # Re-raise HTTP exceptions (401, 400, 502) - don't wrap them
         raise
     except Exception as e:
+        # Unexpected errors - clean up and return 502
         import traceback
         error_details = traceback.format_exc()
-        logger.error(f"Video upload error: {e}")
+        logger.error(f"Unexpected error in video upload: {e}")
         logger.error(f"Full traceback: {error_details}")
+        
         # Clean up video file on error
-        if os.path.exists(video_path):
-            try:
+        try:
+            if os.path.exists(video_path):
                 os.unlink(video_path)
-            except:
-                pass
-        raise HTTPException(500, f"Upload failed: {str(e)}")
+        except:
+            pass
+        
+        raise HTTPException(
+            status_code=502,
+            detail=f"Backend processing error: {str(e)}"
+        )
 
 
 @app.get("/api/transcribe/status/{task_id}")

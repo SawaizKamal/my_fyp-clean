@@ -14,6 +14,24 @@ def run_command(command, cwd=None):
 def main():
     print("--- 🚀 STARTING PYTHON BUILD SCRIPT ---")
     
+    # 0. Check/Install ffmpeg (for Render deployment)
+    # Note: On Render, ffmpeg should be installed in buildCommand before this runs
+    # This is just a verification step
+    print("--- 🔍 Checking for ffmpeg ---")
+    try:
+        import subprocess
+        result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            print("✅ ffmpeg is available")
+        else:
+            print("⚠️  ffmpeg check returned non-zero exit code")
+    except FileNotFoundError:
+        print("⚠️  WARNING: ffmpeg not found. Video upload features will not work.")
+        print("⚠️  On Render: Ensure buildCommand installs ffmpeg (see render.yaml)")
+        print("⚠️  On localhost: Install ffmpeg and add to PATH (see LOCALHOST_SETUP.md)")
+    except Exception as e:
+        print(f"⚠️  Could not check ffmpeg: {e}")
+    
     # 1. Build Frontend
     print("--- 📦 Building Frontend ---")
     run_command("npm install", cwd="frontend")
