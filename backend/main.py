@@ -686,7 +686,6 @@ async def transcribe_uploaded_video_task(task_id: str, video_path: str, video_id
         tasks[task_id] = {"status": TaskStatus.FILTERING, "progress": 75, "segments": transcript_segments}
         logger.info("Analyzing problem and solution sections...")
         
-<<<<<<< HEAD
         # Use GPT-4 to identify solution segments if user_query is provided
         solution_segments = []
         if user_query:
