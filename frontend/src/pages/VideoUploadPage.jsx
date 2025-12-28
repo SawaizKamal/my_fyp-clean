@@ -287,7 +287,7 @@ function VideoUploadPage() {
             <div className="animate-spin rounded-full h-20 w-20 border-4 border-[#00ff41] border-t-transparent mx-auto mb-4 animate-neon-pulse"></div>
             <div className="absolute inset-0 rounded-full border-4 border-[#ff00ff] border-t-transparent animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }}></div>
           </div>
-          <p className="text-[#00ff41] font-mono text-lg animate-neon-glow">> INITIALIZING SYSTEM...</p>
+          <p className="text-[#00ff41] font-mono text-lg animate-neon-glow">{'>'} INITIALIZING SYSTEM...</p>
         </div>
       </div>
     );
@@ -312,7 +312,7 @@ function VideoUploadPage() {
             onClick={() => navigate('/chat')}
             className="glass text-[#00ff41] hover:text-black hover:bg-[#00ff41] px-6 py-2 rounded-lg transition-all duration-300 cyber-button font-mono text-sm border border-[#00ff41]"
           >
-            < BACK TO CHAT
+            {'<'} BACK TO CHAT
           </button>
           <div className="flex items-center gap-4">
             <span className="text-gray-300 font-mono text-sm">[ {user?.username} ]</span>
@@ -320,7 +320,7 @@ function VideoUploadPage() {
               onClick={() => navigate('/')}
               className="glass text-[#ff00ff] hover:text-black hover:bg-[#ff00ff] px-6 py-2 rounded-lg transition-all duration-300 cyber-button font-mono text-sm border border-[#ff00ff]"
             >
-              > HOME
+              {'>'} HOME
             </button>
           </div>
         </div>
@@ -330,13 +330,13 @@ function VideoUploadPage() {
           <div className="max-w-4xl mx-auto animate-fade-in">
             <div className="glass-neon rounded-xl p-8 mb-6 border-2">
               <h1 className="text-4xl font-black mb-6 neon-text-green font-mono uppercase tracking-wider animate-neon-glow">
-                > UPLOAD VIDEO FOR TRANSCRIPTION
+                {'>'} UPLOAD VIDEO FOR TRANSCRIPTION
               </h1>
               
               {/* File Upload */}
               <div className="mb-6">
                 <label className="block text-sm font-bold text-[#00ff41] mb-3 font-mono uppercase">
-                  > SELECT VIDEO FILE
+                  {'>'} SELECT VIDEO FILE
                 </label>
                 <div className="flex items-center gap-4">
                   <input
@@ -350,8 +350,8 @@ function VideoUploadPage() {
                     onClick={() => fileInputRef.current?.click()}
                     className="px-8 py-4 bg-gradient-to-r from-[#ff0040] to-[#ff00ff] hover:from-[#ff00ff] hover:to-[#00ff41] rounded-lg font-black transition-all duration-300 cyber-button font-mono text-sm uppercase tracking-wider transform hover:scale-105 animate-neon-pulse"
                     style={{ boxShadow: '0 0 20px rgba(255, 0, 64, 0.5)' }}
-                  >
-                    > CHOOSE FILE
+                    >
+                    {'>'} CHOOSE FILE
                   </button>
                   {file && (
                     <div className="glass border border-[#00ff41] rounded-lg px-4 py-2">
@@ -366,7 +366,7 @@ function VideoUploadPage() {
               {/* User Query (Optional) */}
               <div className="mb-6">
                 <label className="block text-sm font-bold text-[#ff00ff] mb-2 font-mono uppercase">
-                  > PROBLEM QUERY (OPTIONAL)
+                  {'>'} PROBLEM QUERY (OPTIONAL)
                 </label>
                 <p className="text-xs text-gray-400 mb-3 font-mono">
                   Provide a question or problem description to help identify solution segments
@@ -384,7 +384,7 @@ function VideoUploadPage() {
               {error && (
                 <div className="glass border-2 border-[#ff0040] text-[#ff0040] px-6 py-4 rounded-xl mb-6 animate-slide-in-left" style={{ boxShadow: '0 0 20px rgba(255, 0, 64, 0.5)' }}>
                   <div className="flex items-center gap-2 font-mono font-bold">
-                    <span>> ERROR:</span>
+                    <span>{'>'} ERROR:</span>
                     <span className="font-normal">{error}</span>
                   </div>
                 </div>
@@ -405,7 +405,7 @@ function VideoUploadPage() {
                 <div className="mt-6 animate-fade-in">
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-sm font-mono text-[#00ff41] uppercase">
-                      > {transcribing ? 'TRANSCRIBING VIDEO...' : 'UPLOADING...'}
+                      {'>'} {transcribing ? 'TRANSCRIBING VIDEO...' : 'UPLOADING...'}
                     </span>
                     <span className="text-sm font-mono font-bold text-[#ff00ff] neon-text-pink">{progress}%</span>
                   </div>
@@ -418,7 +418,7 @@ function VideoUploadPage() {
                     </div>
                   </div>
                   <p className="text-xs text-gray-400 mt-3 font-mono">
-                    > Processing time varies based on video length...
+                    {'>'} Processing time varies based on video length...
                     {transcript?.chunks_processed && transcript?.total_chunks && (
                       <span className="text-purple-400 ml-2">
                         Chunk {transcript.chunks_processed}/{transcript.total_chunks}
@@ -469,9 +469,9 @@ function VideoUploadPage() {
               <div className="glass-neon rounded-xl p-4 mb-4 border-2">
                 <div className="flex items-center justify-between">
                   <div className="font-mono text-sm space-y-1">
-                    <p className="text-[#00ff41]">> FILE: <span className="text-white">{transcript.filename}</span></p>
-                    <p className="text-[#00ff41]">> DURATION: <span className="text-white">{formatTime(transcript.duration)}</span></p>
-                    <p className="text-[#00ff41]">> LANGUAGE: <span className="text-white">{transcript.language}</span></p>
+                    <p className="text-[#00ff41]">{'>'} FILE: <span className="text-white">{transcript.filename}</span></p>
+                    <p className="text-[#00ff41]">{'>'} DURATION: <span className="text-white">{formatTime(transcript.duration)}</span></p>
+                    <p className="text-[#00ff41]">{'>'} LANGUAGE: <span className="text-white">{transcript.language}</span></p>
                   </div>
                   <div className="text-right">
                     <div className="flex gap-3 items-center justify-end">
@@ -506,7 +506,7 @@ function VideoUploadPage() {
                 }}
                 className="px-6 py-3 glass border border-[#ff0040] text-[#ff0040] hover:bg-[#ff0040] hover:text-black rounded-lg font-bold transition-all duration-300 cyber-button font-mono text-sm uppercase mb-4"
               >
-                > UPLOAD ANOTHER VIDEO
+                {'>'} UPLOAD ANOTHER VIDEO
               </button>
             </div>
 
@@ -514,7 +514,7 @@ function VideoUploadPage() {
             <div className="lg:col-span-1">
               <div className="glass-neon rounded-xl p-4 h-[calc(100vh-200px)] flex flex-col border-2">
                 <h2 className="text-xl font-black neon-text-green mb-4 flex items-center gap-2 font-mono uppercase tracking-wider">
-                  > TRANSCRIPT
+                  {'>'} TRANSCRIPT
                   <span className="text-xs text-gray-400 font-normal normal-case">
                     ({transcript.segments?.length || 0} segments)
                   </span>
@@ -553,8 +553,8 @@ function VideoUploadPage() {
                               jumpToTimestamp(segment.start);
                             }}
                             className="text-xs font-mono text-[#00ff41] font-bold hover:text-[#00ff41] hover:underline transition-colors neon-text-green"
-                          >
-                            > {segment.timestamp}
+                            >
+                            {'>'} {segment.timestamp}
                           </button>
                           <div className="flex gap-1">
                             {isProblem && (
@@ -604,7 +604,7 @@ function VideoUploadPage() {
                 {(transcript.solution_segments?.length > 0 || transcript.problem_segments?.length > 0) && (
                   <div className="mt-4 pt-4 border-t border-[#2a2a2a]">
                     <p className="text-xs text-gray-400 mb-2 font-mono">
-                      > Click highlighted segments (⭐) to jump to solutions
+                      {'>'} Click highlighted segments (⭐) to jump to solutions
                     </p>
                     <div className="space-y-2">
                       {transcript.solution_segments?.length > 0 && (

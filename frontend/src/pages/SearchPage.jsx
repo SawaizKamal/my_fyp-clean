@@ -47,13 +47,13 @@ function SearchPage() {
               onClick={() => navigate('/chat')}
               className="glass border border-[#00ff41] text-[#00ff41] hover:bg-[#00ff41] hover:text-black px-4 py-2 rounded-lg transition-all duration-300 cyber-button font-mono text-sm uppercase"
             >
-              > CHAT
+              {'>'} CHAT
             </button>
             <button
               onClick={() => navigate('/')}
               className="glass border border-[#ff00ff] text-[#ff00ff] hover:bg-[#ff00ff] hover:text-black px-4 py-2 rounded-lg transition-all duration-300 cyber-button font-mono text-sm uppercase"
             >
-              > HOME
+              {'>'} HOME
             </button>
             <button
               onClick={() => {
@@ -62,7 +62,7 @@ function SearchPage() {
               }}
               className="glass border border-[#ff0040] text-[#ff0040] hover:bg-[#ff0040] hover:text-black px-4 py-2 rounded-lg transition-all duration-300 cyber-button font-mono text-sm uppercase"
             >
-              > LOGOUT
+              {'>'} LOGOUT
             </button>
           </div>
         </div>
@@ -89,7 +89,7 @@ function SearchPage() {
 
         {error && (
           <div className="glass border-2 border-[#ff0040] text-[#ff0040] px-6 py-4 rounded-xl mb-8 animate-slide-in-left font-mono" style={{ boxShadow: '0 0 20px rgba(255, 0, 64, 0.5)' }}>
-            <span className="font-bold">> ERROR:</span> {error}
+            <span className="font-bold">{'>'} ERROR:</span> {error}
           </div>
         )}
 
@@ -105,7 +105,7 @@ function SearchPage() {
 
         {results.length === 0 && !loading && !error && (
           <div className="text-center text-gray-400 text-xl mt-20 font-mono animate-fade-in">
-            > ENTER A SEARCH QUERY TO FIND YOUTUBE VIDEOS
+            {'>'} ENTER A SEARCH QUERY TO FIND YOUTUBE VIDEOS
           </div>
         )}
         
@@ -113,7 +113,7 @@ function SearchPage() {
           <div className="text-center glass border-2 border-[#ff00ff] rounded-xl p-8 mt-20 max-w-2xl mx-auto animate-fade-in" style={{ boxShadow: '0 0 30px rgba(255, 0, 255, 0.3)' }}>
             <p className="mb-4 text-[#ff00ff] font-mono font-bold text-lg">⚠️ YOUTUBE API KEY NOT CONFIGURED</p>
             <p className="text-sm text-gray-300 font-mono">
-              > To search YouTube videos, please set the YOUTUBE_API_KEY environment variable.
+              {'>'} To search YouTube videos, please set the YOUTUBE_API_KEY environment variable.
               <br />
               Get your API key from: <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer" className="text-[#00ff41] hover:text-[#ff00ff] hover:underline transition-colors font-bold">Google Cloud Console</a>
             </p>

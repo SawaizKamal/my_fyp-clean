@@ -37,19 +37,19 @@ function LoginPage() {
         <div className="text-center mb-8">
           <h1 className="text-5xl font-black neon-text-green mb-2 font-mono uppercase tracking-wider animate-neon-glow">you-solution</h1>
           <div className="w-24 h-1 bg-gradient-to-r from-transparent via-[#00ff41] to-transparent mx-auto mb-4"></div>
-          <p className="text-gray-300 font-mono text-lg">> SIGN IN TO CONTINUE</p>
+          <p className="text-gray-300 font-mono text-lg">{'>'} SIGN IN TO CONTINUE</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {error && (
             <div className="glass border-2 border-[#ff0040] text-[#ff0040] px-4 py-3 rounded-lg text-sm font-mono animate-slide-in-left" style={{ boxShadow: '0 0 20px rgba(255, 0, 64, 0.5)' }}>
-              <span className="font-bold">> ERROR:</span> {error}
+              <span className="font-bold">{'>'} ERROR:</span> {error}
             </div>
           )}
 
           <div>
             <label htmlFor="username" className="block text-[#00ff41] text-sm font-bold mb-2 font-mono uppercase">
-              > USERNAME
+              {'>'} USERNAME
             </label>
             <input
               id="username"
@@ -64,7 +64,7 @@ function LoginPage() {
 
           <div>
             <label htmlFor="password" className="block text-[#ff00ff] text-sm font-bold mb-2 font-mono uppercase">
-              > PASSWORD
+              {'>'} PASSWORD
             </label>
             <input
               id="password"
@@ -89,7 +89,7 @@ function LoginPage() {
 
         <div className="mt-6 text-center">
           <p className="text-gray-300 font-mono">
-            > DON'T HAVE AN ACCOUNT?{' '}
+            {'>'} DON'T HAVE AN ACCOUNT?{' '}
             <Link to="/register" className="text-[#00ff41] font-bold hover:text-[#ff00ff] hover:underline transition-colors">
               SIGN UP
             </Link>
@@ -98,7 +98,7 @@ function LoginPage() {
 
         <div className="mt-4 text-center">
           <Link to="/" className="text-gray-400 text-sm hover:text-[#00ff41] font-mono transition-colors">
-            < BACK TO HOME
+            {'<'} BACK TO HOME
           </Link>
         </div>
       </div>

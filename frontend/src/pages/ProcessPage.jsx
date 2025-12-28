@@ -41,11 +41,11 @@ function ProcessPage() {
           onClick={() => navigate('/search')}
           className="glass border border-[#00ff41] text-[#00ff41] hover:bg-[#00ff41] hover:text-black px-4 py-2 rounded-lg mb-6 transition-all duration-300 cyber-button font-mono text-sm uppercase"
         >
-          < BACK TO SEARCH
+          {'<'} BACK TO SEARCH
         </button>
 
         <div className="max-w-4xl mx-auto animate-fade-in">
-          <h1 className="text-4xl font-black neon-text-green mb-8 font-mono uppercase tracking-wider animate-neon-glow">> PROCESS VIDEO</h1>
+          <h1 className="text-4xl font-black neon-text-green mb-8 font-mono uppercase tracking-wider animate-neon-glow">{'>'} PROCESS VIDEO</h1>
 
           {/* YouTube Embed */}
           <div className="mb-8 bg-black rounded-xl overflow-hidden">

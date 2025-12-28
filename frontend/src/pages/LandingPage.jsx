@@ -42,13 +42,13 @@ function LandingPage() {
                   onClick={() => navigate('/search')}
                   className="glass-neon text-[#00ff41] px-6 py-2 rounded-lg hover:bg-[#00ff41] hover:text-black transition-all duration-300 cyber-button font-mono text-sm border border-[#00ff41]"
                 >
-                  > DASHBOARD
+                  {'>'} DASHBOARD
                 </button>
                 <button
                   onClick={logout}
                   className="glass text-[#ff0040] px-6 py-2 rounded-lg hover:bg-[#ff0040] hover:text-black transition-all duration-300 cyber-button font-mono text-sm border border-[#ff0040]"
                 >
-                  > LOGOUT
+                  {'>'} LOGOUT
                 </button>
               </>
             ) : (
@@ -57,13 +57,13 @@ function LandingPage() {
                   onClick={() => navigate('/login')}
                   className="glass text-[#00ff41] px-6 py-2 rounded-lg hover:bg-[#00ff41] hover:text-black transition-all duration-300 cyber-button font-mono text-sm border border-[#00ff41]"
                 >
-                  > LOGIN
+                  {'>'} LOGIN
                 </button>
                 <button
                   onClick={() => navigate('/register')}
                   className="glass-neon text-[#ff00ff] px-6 py-2 rounded-lg hover:bg-[#ff00ff] hover:text-black transition-all duration-300 cyber-button font-mono text-sm border border-[#ff00ff] animate-neon-pulse"
                 >
-                  > SIGN UP
+                  {'>'} SIGN UP
                 </button>
               </>
             )}
@@ -83,7 +83,7 @@ function LandingPage() {
           </div>
           
           <p className="text-3xl mb-6 text-gray-200 font-light" style={{ letterSpacing: '0.05em' }}>
-            > EXTRACT WHAT MATTERS
+            {'>'} EXTRACT WHAT MATTERS
           </p>
           <p className="text-xl mb-12 text-gray-400 font-mono">
             AI-POWERED VIDEO INTELLIGENCE SYSTEM
@@ -107,8 +107,8 @@ function LandingPage() {
         <div className="max-w-6xl mx-auto mt-32 grid md:grid-cols-3 gap-8 animate-slide-in-right">
           <div className="glass-neon rounded-xl p-8 text-white border border-[#00ff41] hover:border-[#ff00ff] transition-all duration-300 group">
             <div className="text-5xl mb-4 group-hover:scale-110 transition-transform duration-300">🎯</div>
-            <h3 className="text-2xl font-bold mb-4 neon-text-green group-hover:neon-text-pink transition-all duration-300" style={{ fontFamily: 'monospace' }}>
-              > SMART EXTRACTION
+              <h3 className="text-2xl font-bold mb-4 neon-text-green group-hover:neon-text-pink transition-all duration-300" style={{ fontFamily: 'monospace' }}>
+              {'>'} SMART EXTRACTION
             </h3>
             <p className="text-gray-300 leading-relaxed">
               Neural network algorithms identify and extract critical solution segments from video content
@@ -119,7 +119,7 @@ function LandingPage() {
           <div className="glass rounded-xl p-8 text-white border border-[#ff00ff] hover:border-[#ff0040] transition-all duration-300 group">
             <div className="text-5xl mb-4 group-hover:scale-110 transition-transform duration-300">⚡</div>
             <h3 className="text-2xl font-bold mb-4 neon-text-pink group-hover:neon-text-red transition-all duration-300" style={{ fontFamily: 'monospace' }}>
-              > QUANTUM PROCESSING
+              {'>'} QUANTUM PROCESSING
             </h3>
             <p className="text-gray-300 leading-relaxed">
               Real-time transcription and analysis with sub-second response times
@@ -130,7 +130,7 @@ function LandingPage() {
           <div className="glass-neon rounded-xl p-8 text-white border border-[#ff0040] hover:border-[#00ff41] transition-all duration-300 group">
             <div className="text-5xl mb-4 group-hover:scale-110 transition-transform duration-300">📱</div>
             <h3 className="text-2xl font-bold mb-4 neon-text-red group-hover:neon-text-green transition-all duration-300" style={{ fontFamily: 'monospace' }}>
-              > INTUITIVE INTERFACE
+              {'>'} INTUITIVE INTERFACE
             </h3>
             <p className="text-gray-300 leading-relaxed">
               Zero-learning-curve design optimized for maximum efficiency
@@ -143,13 +143,13 @@ function LandingPage() {
         {process.env.NODE_ENV === 'development' && (
           <div className="max-w-4xl mx-auto mt-16 glass border border-[#00ff41] rounded-xl p-6 animate-fade-in">
             <div className="flex items-center gap-3 mb-4">
-              <span className="text-[#00ff41] font-mono text-sm">> DEBUG MODE ACTIVE</span>
+              <span className="text-[#00ff41] font-mono text-sm">{'>'} DEBUG MODE ACTIVE</span>
               <div className="flex-1 h-px bg-gradient-to-r from-[#00ff41] to-transparent"></div>
             </div>
             <div className="font-mono text-xs text-gray-400 space-y-1">
-              <div>> System Status: <span className="text-[#00ff41]">OPERATIONAL</span></div>
-              <div>> Authentication: <span className={isAuthenticated ? "text-[#00ff41]" : "text-[#ff0040]"}>{isAuthenticated ? "AUTHENTICATED" : "UNAUTHENTICATED"}</span></div>
-              <div>> User Session: <span className="text-[#00ff41]">{user?.username || "NONE"}</span></div>
+              <div>{'>'} System Status: <span className="text-[#00ff41]">OPERATIONAL</span></div>
+              <div>{'>'} Authentication: <span className={isAuthenticated ? "text-[#00ff41]" : "text-[#ff0040]"}>{isAuthenticated ? "AUTHENTICATED" : "UNAUTHENTICATED"}</span></div>
+              <div>{'>'} User Session: <span className="text-[#00ff41]">{user?.username || "NONE"}</span></div>
             </div>
           </div>
         )}

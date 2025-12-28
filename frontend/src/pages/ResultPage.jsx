@@ -69,11 +69,11 @@ function ResultPage() {
           onClick={() => navigate('/search')}
           className="glass border border-[#00ff41] text-[#00ff41] hover:bg-[#00ff41] hover:text-black px-4 py-2 rounded-lg mb-6 transition-all duration-300 cyber-button font-mono text-sm uppercase"
         >
-          < BACK TO SEARCH
+          {'<'} BACK TO SEARCH
         </button>
 
         <div className="max-w-4xl mx-auto animate-fade-in">
-          <h1 className="text-4xl font-black neon-text-green mb-8 font-mono uppercase tracking-wider animate-neon-glow">> PROCESSING STATUS</h1>
+          <h1 className="text-4xl font-black neon-text-green mb-8 font-mono uppercase tracking-wider animate-neon-glow">{'>'} PROCESSING STATUS</h1>
 
           {loading && status && (
             <div className="glass-neon rounded-xl p-8 mb-8 border-2 animate-fade-in">
@@ -122,13 +122,13 @@ function ResultPage() {
                   download
                   className="flex-1 py-4 px-6 glass border-2 border-[#00ff41] text-[#00ff41] hover:bg-[#00ff41] hover:text-black rounded-lg text-center font-black transition-all duration-300 cyber-button font-mono uppercase tracking-wider"
                 >
-                  > DOWNLOAD VIDEO
+                  {'>'} DOWNLOAD VIDEO
                 </a>
                 <button
                   onClick={() => navigate('/search')}
                   className="flex-1 py-4 px-6 glass border-2 border-[#ff00ff] text-[#ff00ff] hover:bg-[#ff00ff] hover:text-black rounded-lg font-black transition-all duration-300 cyber-button font-mono uppercase tracking-wider"
                 >
-                  > PROCESS ANOTHER
+                  {'>'} PROCESS ANOTHER
                 </button>
               </div>
             </div>
@@ -140,13 +140,13 @@ function ResultPage() {
                 ❌ PROCESSING FAILED
               </h2>
               <p className="text-gray-300 mb-6 font-mono">
-                > {status.error || 'An error occurred during processing'}
+                {'>'} {status.error || 'An error occurred during processing'}
               </p>
               <button
                 onClick={() => navigate('/search')}
                 className="py-4 px-8 glass border-2 border-[#ff00ff] text-[#ff00ff] hover:bg-[#ff00ff] hover:text-black rounded-lg font-black transition-all duration-300 cyber-button font-mono uppercase tracking-wider"
               >
-                > TRY AGAIN
+                {'>'} TRY AGAIN
               </button>
             </div>
           )}

@@ -312,7 +312,7 @@ function VideoPlayerPage() {
             <div className="animate-spin rounded-full h-20 w-20 border-4 border-[#00ff41] border-t-transparent mx-auto mb-4 animate-neon-pulse"></div>
             <div className="absolute inset-0 rounded-full border-4 border-[#ff00ff] border-t-transparent animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }}></div>
           </div>
-          <p className="text-[#00ff41] font-mono text-lg animate-neon-glow">> TRANSCRIBING VIDEO AND IDENTIFYING SOLUTIONS...</p>
+          <p className="text-[#00ff41] font-mono text-lg animate-neon-glow">{'>'} TRANSCRIBING VIDEO AND IDENTIFYING SOLUTIONS...</p>
           <p className="text-sm text-gray-400 mt-2 font-mono">This may take a minute</p>
         </div>
       </div>
@@ -328,16 +328,16 @@ function VideoPlayerPage() {
             onClick={() => navigate('/chat')}
             className="glass border border-[#00ff41] text-[#00ff41] hover:bg-[#00ff41] hover:text-black mb-6 flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 cyber-button font-mono text-sm uppercase"
           >
-            < BACK TO CHAT
+            {'<'} BACK TO CHAT
           </button>
           <div className="glass border-2 border-[#ff0040] rounded-xl p-8 max-w-2xl mx-auto animate-fade-in" style={{ boxShadow: '0 0 30px rgba(255, 0, 64, 0.5)' }}>
             <h2 className="text-3xl font-black neon-text-red mb-4 flex items-center gap-2 font-mono uppercase tracking-wider">
               <span>⚠️</span> ERROR LOADING TRANSCRIPTION
             </h2>
-            <p className="text-gray-300 mb-4 font-mono">> {error}</p>
+            <p className="text-gray-300 mb-4 font-mono">{'>'} {error}</p>
             <div className="glass border border-[#ff00ff] rounded-lg p-4 mb-4">
               <p className="text-[#ff00ff] text-sm font-mono font-bold">
-                > POSSIBLE SOLUTIONS:
+                {'>'} POSSIBLE SOLUTIONS:
               </p>
               <ul className="list-disc list-inside text-gray-300 text-sm mt-2 space-y-1 font-mono">
                 <li>Try again in a few moments (YouTube may be temporarily blocking requests)</li>
@@ -349,8 +349,8 @@ function VideoPlayerPage() {
             <button
               onClick={() => window.location.reload()}
               className="px-6 py-3 glass border-2 border-[#00ff41] text-[#00ff41] hover:bg-[#00ff41] hover:text-black rounded-lg font-black transition-all duration-300 cyber-button font-mono uppercase tracking-wider"
-            >
-              > RETRY
+              >
+              {'>'} RETRY
             </button>
           </div>
         </div>
@@ -375,7 +375,7 @@ function VideoPlayerPage() {
             onClick={() => navigate('/chat')}
             className="glass border border-[#00ff41] text-[#00ff41] hover:bg-[#00ff41] hover:text-black px-4 py-2 rounded-lg transition-all duration-300 cyber-button font-mono text-sm uppercase"
           >
-            < BACK TO CHAT
+            {'<'} BACK TO CHAT
           </button>
           <div className="flex items-center gap-4">
             <span className="text-gray-300 font-mono text-sm">[ {user?.username} ]</span>
@@ -383,7 +383,7 @@ function VideoPlayerPage() {
               onClick={() => navigate('/')}
               className="glass border border-[#ff00ff] text-[#ff00ff] hover:bg-[#ff00ff] hover:text-black px-4 py-2 rounded-lg transition-all duration-300 cyber-button font-mono text-sm uppercase"
             >
-              > HOME
+              {'>'} HOME
             </button>
           </div>
         </div>
@@ -502,8 +502,8 @@ function VideoPlayerPage() {
             <div className="glass-neon rounded-xl p-4 mb-4 border-2">
               <div className="flex items-center justify-between">
                 <div className="font-mono text-sm space-y-1">
-                  <p className="text-[#00ff41]">> DURATION: <span className="text-white">{formatTime(transcript.duration)}</span></p>
-                  <p className="text-[#00ff41]">> LANGUAGE: <span className="text-white">{transcript.language}</span></p>
+                  <p className="text-[#00ff41]">{'>'} DURATION: <span className="text-white">{formatTime(transcript.duration)}</span></p>
+                  <p className="text-[#00ff41]">{'>'} LANGUAGE: <span className="text-white">{transcript.language}</span></p>
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-mono font-bold neon-text-pink">
@@ -521,7 +521,7 @@ function VideoPlayerPage() {
           <div className="lg:col-span-1">
             <div className="glass-neon rounded-xl p-4 h-[calc(100vh-200px)] flex flex-col border-2">
               <h2 className="text-xl font-black neon-text-green mb-4 flex items-center gap-2 font-mono uppercase tracking-wider">
-                > TRANSCRIPT
+                {'>'} TRANSCRIPT
                 <span className="text-xs text-gray-400 font-normal normal-case">
                   ({transcript.segments?.length || 0} segments)
                 </span>
@@ -571,8 +571,8 @@ function VideoPlayerPage() {
                             jumpToTimestamp(segment.start);
                           }}
                           className="text-xs font-mono text-[#00ff41] font-bold hover:text-[#00ff41] hover:underline transition-colors neon-text-green"
-                        >
-                          > {segment.timestamp}
+                          >
+                          {'>'} {segment.timestamp}
                         </button>
                         {isSolution && (
                           <span className="text-xs glass border border-[#ff00ff] text-[#ff00ff] px-2 py-0.5 rounded font-bold animate-neon-pulse font-mono">
@@ -597,7 +597,7 @@ function VideoPlayerPage() {
               {transcript.solution_segments && transcript.solution_segments.length > 0 && (
                 <div className="mt-4 pt-4 border-t border-[#ff00ff]">
                   <p className="text-xs text-gray-400 mb-3 font-mono">
-                    > Click highlighted segments (⭐) to jump to solutions
+                    {'>'} Click highlighted segments (⭐) to jump to solutions
                   </p>
                   <div className="space-y-2">
                     <button

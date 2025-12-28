@@ -140,9 +140,9 @@ function RegisterPage() {
         </div>
 
         <div className="mt-4 text-center">
-          <Link to="/" className="text-gray-400 text-sm hover:text-[#00ff41] font-mono transition-colors">
-            < BACK TO HOME
-          </Link>
+            <Link to="/" className="text-gray-400 text-sm hover:text-[#00ff41] font-mono transition-colors">
+              {'<'} BACK TO HOME
+            </Link>
         </div>
       </div>
     </div>
