@@ -5,6 +5,8 @@ services:
     plan: standard  # Recommended: 2GB RAM, 1 CPU for production
     # For development/testing, use: plan: starter (512MB RAM, 0.5 CPU)
     # For high load, use: plan: standard-plus (4GB RAM, 2 CPU)
+    # Install ffmpeg (required for video processing) then run build
+    # Note: Render's environment should have ffmpeg, but this ensures it's available
     buildCommand: python build.py
     startCommand: cd backend && python -m uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1
     envVars:

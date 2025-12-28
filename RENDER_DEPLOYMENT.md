@@ -30,13 +30,25 @@ The `render.yaml` automatically creates a PostgreSQL database. The `DATABASE_URL
 ### 4. Deploy
 
 Render will automatically:
-1. Run `python build.py` (builds frontend and sets up backend)
-2. Start the service with: `cd backend && python -m uvicorn main:app --host 0.0.0.0 --port $PORT`
+1. Install ffmpeg (required for video processing)
+2. Run `python build.py` (builds frontend and sets up backend)
+3. Start the service with: `cd backend && python -m uvicorn main:app --host 0.0.0.0 --port $PORT`
+
+**Note**: If build fails with "sudo: command not found", switch to Docker runtime (see RENDER_FFMPEG_SETUP.md)
 
 ### 5. Verify Deployment
 
 1. Check health endpoint: `https://yourapp.onrender.com/api/health`
-2. Should return: `{"status": "ok", "database": "connected", "model": "gpt-4o"}`
+2. Should return: 
+   ```json
+   {
+     "status": "ok",
+     "database": "connected",
+     "model": "gpt-4o",
+     "ffmpeg_available": true
+   }
+   ```
+3. If `ffmpeg_available: false`, see RENDER_FFMPEG_SETUP.md for troubleshooting
 
 ## 📋 Important Notes
 
