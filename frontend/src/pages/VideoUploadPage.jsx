@@ -189,7 +189,23 @@ function VideoUploadPage() {
             }
           } catch (pollErr) {
             console.error('Polling error:', pollErr);
-            // Continue polling on error
+            console.error('Polling error details:', {
+              message: pollErr.message,
+              response: pollErr.response?.data,
+              status: pollErr.response?.status
+            });
+            
+            // If it's a 401, stop polling and redirect
+            if (pollErr.response?.status === 401) {
+              if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+              setError('Your session has expired. Redirecting to login...');
+              setTimeout(() => {
+                navigate('/login');
+              }, 2000);
+              return;
+            }
+            
+            // Continue polling on other errors (might be temporary network issues)
           }
         }, 1500); // Poll every 1.5 seconds for more responsive updates
         
@@ -206,8 +222,15 @@ function VideoUploadPage() {
       
     } catch (err) {
       if (progressInterval) clearInterval(progressInterval);
+      
+      // Enhanced error logging
       console.error('Transcription error:', err);
-      console.error('Error response:', err.response);
+      console.error('Error details:', {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status,
+        statusText: err.response?.statusText
+      });
       
       // Handle different error status codes
       if (err.response?.status === 401) {
@@ -219,12 +242,30 @@ function VideoUploadPage() {
       }
       
       if (err.response?.status === 502 || err.response?.status === 503) {
-        setError('Server is temporarily unavailable. Please try again in a few moments.');
+        // Try to extract more detailed error message from response
+        const errorDetail = err.response?.data?.detail || err.response?.data?.message;
+        if (errorDetail) {
+          setError(`Server error: ${errorDetail}\n\nPlease try again in a few moments.`);
+        } else {
+          setError('Server is temporarily unavailable. Please try again in a few moments.');
+        }
         return;
       }
       
-      const errorMessage = err.response?.data?.detail || err.response?.data?.message || err.message || 'Failed to transcribe video. Please try again.';
-      setError(errorMessage);
+      // Extract error message with fallback chain
+      const errorMessage = err.response?.data?.detail 
+        || err.response?.data?.message 
+        || err.response?.data?.error
+        || err.message 
+        || 'Failed to transcribe video. Please try again.';
+      
+      // If error has suggestion, include it
+      const errorSuggestion = err.response?.data?.error_suggestion;
+      if (errorSuggestion) {
+        setError(`${errorMessage}\n\n💡 Suggestion: ${errorSuggestion}`);
+      } else {
+        setError(errorMessage);
+      }
     } finally {
       setUploading(false);
       setTranscribing(false);

@@ -30,6 +30,10 @@ services:
         fromDatabase:
           name: fullstack-db
           property: connectionString
+      - key: WHISPER_MODEL_SIZE
+        value: tiny  # Use "tiny" for free/starter tier (512MB RAM), "base" for standard (2GB RAM)
+      # Note: If you're on free tier, WHISPER_MODEL_SIZE=tiny is required
+      # For standard tier (2GB RAM), you can use WHISPER_MODEL_SIZE=base for better accuracy
 
 databases:
   - name: fullstack-db
