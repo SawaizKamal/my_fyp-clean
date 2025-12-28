@@ -1,21 +1,29 @@
 services:
-  - type: native
+  - type: web
     name: fullstack-app
+    runtime: python
+    plan: standard  # Recommended: 2GB RAM, 1 CPU for production
+    # For development/testing, use: plan: starter (512MB RAM, 0.5 CPU)
+    # For high load, use: plan: standard-plus (4GB RAM, 2 CPU)
     buildCommand: python build.py
-    startCommand: cd backend && python -m uvicorn main:app --host 0.0.0.0 --port $PORT
-    # Alternative build command (if build.py fails):
-    # buildCommand: cd frontend && npm install && npm run build && cd .. && cp -r frontend/dist backend/dist_build && cd backend && pip install -r requirements.txt
+    startCommand: cd backend && python -m uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1
     envVars:
       - key: PYTHON_VERSION
-        value: 3.10.0
+        value: 3.10.13
       - key: NODE_VERSION
         value: 20.0.0
+      - key: ENVIRONMENT
+        value: production
       - key: SECRET_KEY
         generateValue: true
       - key: OPENAI_API_KEY
         sync: false
       - key: YOUTUBE_API_KEY
         sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+        # Set this in Render dashboard to your app URL, e.g.:
+        # https://your-app.onrender.com,https://www.yourdomain.com
       - key: DATABASE_URL
         fromDatabase:
           name: fullstack-db
@@ -23,6 +31,6 @@ services:
 
 databases:
   - name: fullstack-db
-    plan: free
+    plan: free  # Upgrade to starter ($7/month) for better performance in production
     databaseName: my_fyp
     user: my_fyp_user

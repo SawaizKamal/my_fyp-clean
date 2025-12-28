@@ -2,7 +2,10 @@ import os
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
-load_dotenv()
+# Get the directory where config.py is located
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Load .env file from the same directory as config.py
+load_dotenv(os.path.join(BASE_DIR, ".env"))
 
 # OpenAI API Key - Set via environment variable OPENAI_API_KEY
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")

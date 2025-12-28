@@ -41,23 +41,29 @@ function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-600 via-blue-600 to-indigo-700 flex items-center justify-center px-4">
-      <div className="max-w-md w-full bg-white bg-opacity-10 backdrop-blur-lg rounded-2xl p-8 shadow-2xl">
+    <div className="min-h-screen bg-black flex items-center justify-center px-4 relative overflow-hidden">
+      {/* Animated background */}
+      <div className="absolute inset-0 grid-overlay opacity-20"></div>
+      <div className="absolute top-0 right-0 w-96 h-96 bg-[#ff00ff] opacity-10 blur-3xl animate-float"></div>
+      <div className="absolute bottom-0 left-0 w-96 h-96 bg-[#ff0040] opacity-10 blur-3xl animate-float" style={{ animationDelay: '1s' }}></div>
+      
+      <div className="max-w-md w-full glass-neon rounded-2xl p-8 border-2 relative z-10 animate-fade-in" style={{ boxShadow: '0 0 40px rgba(255, 0, 255, 0.3)' }}>
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">Create Account</h1>
-          <p className="text-gray-200">Sign up to get started</p>
+          <h1 className="text-5xl font-black neon-text-pink mb-2 font-mono uppercase tracking-wider animate-neon-glow">you-solution</h1>
+          <div className="w-24 h-1 bg-gradient-to-r from-transparent via-[#ff00ff] to-transparent mx-auto mb-4"></div>
+          <p className="text-gray-300 font-mono text-lg">> CREATE ACCOUNT</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {error && (
-            <div className="bg-red-500 bg-opacity-20 border border-red-300 text-red-100 px-4 py-3 rounded-lg text-sm">
-              {error}
+            <div className="glass border-2 border-[#ff0040] text-[#ff0040] px-4 py-3 rounded-lg text-sm font-mono animate-slide-in-left" style={{ boxShadow: '0 0 20px rgba(255, 0, 64, 0.5)' }}>
+              <span className="font-bold">> ERROR:</span> {error}
             </div>
           )}
 
           <div>
-            <label htmlFor="username" className="block text-white text-sm font-medium mb-2">
-              Username *
+            <label htmlFor="username" className="block text-[#00ff41] text-sm font-bold mb-2 font-mono uppercase">
+              > USERNAME *
             </label>
             <input
               id="username"
@@ -65,28 +71,28 @@ function RegisterPage() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
-              className="w-full px-4 py-3 rounded-lg bg-white bg-opacity-20 border border-white border-opacity-30 text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent"
+              className="w-full px-4 py-3 rounded-lg bg-black/80 border-2 border-[#00ff41] text-[#00ff41] placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#00ff41] focus:border-[#00ff41] font-mono transition-all duration-300 focus:shadow-[0_0_20px_rgba(0,255,65,0.3)]"
               placeholder="Choose a username"
             />
           </div>
 
           <div>
-            <label htmlFor="email" className="block text-white text-sm font-medium mb-2">
-              Email (optional)
+            <label htmlFor="email" className="block text-[#ff00ff] text-sm font-bold mb-2 font-mono uppercase">
+              > EMAIL (OPTIONAL)
             </label>
             <input
               id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 rounded-lg bg-white bg-opacity-20 border border-white border-opacity-30 text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent"
+              className="w-full px-4 py-3 rounded-lg bg-black/80 border-2 border-[#ff00ff] text-[#ff00ff] placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#ff00ff] focus:border-[#ff00ff] font-mono transition-all duration-300 focus:shadow-[0_0_20px_rgba(255,0,255,0.3)]"
               placeholder="Enter your email"
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="block text-white text-sm font-medium mb-2">
-              Password *
+            <label htmlFor="password" className="block text-[#00ff41] text-sm font-bold mb-2 font-mono uppercase">
+              > PASSWORD *
             </label>
             <input
               id="password"
@@ -94,14 +100,14 @@ function RegisterPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full px-4 py-3 rounded-lg bg-white bg-opacity-20 border border-white border-opacity-30 text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent"
+              className="w-full px-4 py-3 rounded-lg bg-black/80 border-2 border-[#00ff41] text-[#00ff41] placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#00ff41] focus:border-[#00ff41] font-mono transition-all duration-300 focus:shadow-[0_0_20px_rgba(0,255,65,0.3)]"
               placeholder="At least 6 characters"
             />
           </div>
 
           <div>
-            <label htmlFor="confirmPassword" className="block text-white text-sm font-medium mb-2">
-              Confirm Password *
+            <label htmlFor="confirmPassword" className="block text-[#ff00ff] text-sm font-bold mb-2 font-mono uppercase">
+              > CONFIRM PASSWORD *
             </label>
             <input
               id="confirmPassword"
@@ -109,7 +115,7 @@ function RegisterPage() {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
-              className="w-full px-4 py-3 rounded-lg bg-white bg-opacity-20 border border-white border-opacity-30 text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-white focus:border-transparent"
+              className="w-full px-4 py-3 rounded-lg bg-black/80 border-2 border-[#ff00ff] text-[#ff00ff] placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#ff00ff] focus:border-[#ff00ff] font-mono transition-all duration-300 focus:shadow-[0_0_20px_rgba(255,0,255,0.3)]"
               placeholder="Confirm your password"
             />
           </div>
@@ -117,24 +123,25 @@ function RegisterPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-white text-purple-600 font-bold py-3 px-6 rounded-lg hover:bg-gray-100 transition duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            className="w-full bg-gradient-to-r from-[#ff0040] via-[#ff00ff] to-[#00ff41] hover:from-[#ff00ff] hover:via-[#00ff41] hover:to-[#ff0040] text-black font-black py-4 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none cyber-button font-mono text-lg uppercase tracking-wider"
+            style={{ boxShadow: '0 0 30px rgba(255, 0, 64, 0.5), 0 0 60px rgba(255, 0, 255, 0.3)' }}
           >
-            {loading ? 'Creating account...' : 'Sign Up'}
+            {loading ? '> CREATING ACCOUNT...' : '> SIGN UP'}
           </button>
         </form>
 
         <div className="mt-6 text-center">
-          <p className="text-gray-200">
-            Already have an account?{' '}
-            <Link to="/login" className="text-white font-semibold hover:underline">
-              Sign in
+          <p className="text-gray-300 font-mono">
+            > ALREADY HAVE AN ACCOUNT?{' '}
+            <Link to="/login" className="text-[#00ff41] font-bold hover:text-[#ff00ff] hover:underline transition-colors">
+              SIGN IN
             </Link>
           </p>
         </div>
 
         <div className="mt-4 text-center">
-          <Link to="/" className="text-gray-300 text-sm hover:text-white">
-            ← Back to Home
+          <Link to="/" className="text-gray-400 text-sm hover:text-[#00ff41] font-mono transition-colors">
+            < BACK TO HOME
           </Link>
         </div>
       </div>

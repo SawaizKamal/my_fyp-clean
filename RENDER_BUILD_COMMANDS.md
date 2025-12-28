@@ -81,3 +81,9 @@ Render will automatically use this version.
 - The start command runs from the backend directory
 - Frontend build output is served by FastAPI static file mounting
 
+
+
+
+
+
+

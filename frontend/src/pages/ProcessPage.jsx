@@ -32,17 +32,20 @@ function ProcessPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
-      <div className="container mx-auto px-4 py-8">
+    <div className="min-h-screen bg-black text-white relative overflow-hidden">
+      {/* Animated background */}
+      <div className="absolute inset-0 grid-overlay opacity-20"></div>
+      
+      <div className="container mx-auto px-4 py-8 relative z-10">
         <button
           onClick={() => navigate('/search')}
-          className="text-gray-400 hover:text-white mb-6"
+          className="glass border border-[#00ff41] text-[#00ff41] hover:bg-[#00ff41] hover:text-black px-4 py-2 rounded-lg mb-6 transition-all duration-300 cyber-button font-mono text-sm uppercase"
         >
-          ← Back to Search
+          < BACK TO SEARCH
         </button>
 
-        <div className="max-w-4xl mx-auto">
-          <h1 className="text-3xl font-bold mb-8">Process Video</h1>
+        <div className="max-w-4xl mx-auto animate-fade-in">
+          <h1 className="text-4xl font-black neon-text-green mb-8 font-mono uppercase tracking-wider animate-neon-glow">> PROCESS VIDEO</h1>
 
           {/* YouTube Embed */}
           <div className="mb-8 bg-black rounded-xl overflow-hidden">
@@ -59,9 +62,9 @@ function ProcessPage() {
           </div>
 
           {/* Goal Input Form */}
-          <form onSubmit={handleSubmit} className="bg-gray-800 rounded-xl p-8">
-            <label htmlFor="goal" className="block text-xl font-semibold mb-4">
-              What part of this video would you like to extract?
+          <form onSubmit={handleSubmit} className="glass-neon rounded-xl p-8 border-2">
+            <label htmlFor="goal" className="block text-xl font-black text-[#00ff41] mb-4 font-mono uppercase">
+              > WHAT PART OF THIS VIDEO WOULD YOU LIKE TO EXTRACT?
             </label>
             <textarea
               id="goal"
@@ -69,21 +72,22 @@ function ProcessPage() {
               onChange={(e) => setGoal(e.target.value)}
               placeholder="e.g., Show me the tutorial steps for building a website..."
               rows="4"
-              className="w-full px-6 py-4 rounded-lg bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 mb-6"
+              className="w-full px-6 py-4 rounded-lg bg-black/80 border-2 border-[#ff00ff] text-[#00ff41] placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-[#ff00ff] focus:border-[#ff00ff] mb-6 font-mono transition-all duration-300 focus:shadow-[0_0_20px_rgba(255,0,255,0.3)]"
             />
 
             {error && (
-              <div className="bg-red-500 bg-opacity-20 border border-red-500 text-red-300 px-4 py-3 rounded-lg mb-6">
-                {error}
+              <div className="glass border-2 border-[#ff0040] text-[#ff0040] px-4 py-3 rounded-lg mb-6 font-mono animate-slide-in-left" style={{ boxShadow: '0 0 20px rgba(255, 0, 64, 0.5)' }}>
+                <span className="font-bold">> ERROR:</span> {error}
               </div>
             )}
 
             <button
               type="submit"
               disabled={loading || !goal.trim()}
-              className="w-full py-4 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-lg"
+              className="w-full py-5 bg-gradient-to-r from-[#ff0040] via-[#ff00ff] to-[#00ff41] hover:from-[#ff00ff] hover:via-[#00ff41] hover:to-[#ff0040] rounded-lg font-black transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed text-lg cyber-button font-mono uppercase tracking-wider transform hover:scale-105 disabled:transform-none"
+              style={{ boxShadow: '0 0 30px rgba(255, 0, 64, 0.5), 0 0 60px rgba(255, 0, 255, 0.3)' }}
             >
-              {loading ? 'Processing...' : 'Process Video →'}
+              {loading ? '> PROCESSING...' : '> PROCESS VIDEO →'}
             </button>
           </form>
         </div>

@@ -60,52 +60,57 @@ function ResultPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
-      <div className="container mx-auto px-4 py-8">
+    <div className="min-h-screen bg-black text-white relative overflow-hidden">
+      {/* Animated background */}
+      <div className="absolute inset-0 grid-overlay opacity-20"></div>
+      
+      <div className="container mx-auto px-4 py-8 relative z-10">
         <button
           onClick={() => navigate('/search')}
-          className="text-gray-400 hover:text-white mb-6"
+          className="glass border border-[#00ff41] text-[#00ff41] hover:bg-[#00ff41] hover:text-black px-4 py-2 rounded-lg mb-6 transition-all duration-300 cyber-button font-mono text-sm uppercase"
         >
-          ← Back to Search
+          < BACK TO SEARCH
         </button>
 
-        <div className="max-w-4xl mx-auto">
-          <h1 className="text-3xl font-bold mb-8">Processing Status</h1>
+        <div className="max-w-4xl mx-auto animate-fade-in">
+          <h1 className="text-4xl font-black neon-text-green mb-8 font-mono uppercase tracking-wider animate-neon-glow">> PROCESSING STATUS</h1>
 
           {loading && status && (
-            <div className="bg-gray-800 rounded-xl p-8 mb-8">
+            <div className="glass-neon rounded-xl p-8 mb-8 border-2 animate-fade-in">
               <div className="mb-4">
                 <div className="flex items-center mb-2">
-                  <div className={`w-3 h-3 rounded-full ${getStatusColor()} mr-3 animate-pulse`}></div>
-                  <p className="text-xl">{getStatusText()}</p>
+                  <div className={`w-4 h-4 rounded-full ${getStatusColor() === 'bg-green-500' ? 'bg-[#00ff41]' : getStatusColor() === 'bg-red-500' ? 'bg-[#ff0040]' : 'bg-[#ff00ff]'} mr-3 animate-pulse`} style={{ boxShadow: `0 0 10px ${getStatusColor() === 'bg-green-500' ? '#00ff41' : getStatusColor() === 'bg-red-500' ? '#ff0040' : '#ff00ff'}` }}></div>
+                  <p className="text-xl font-mono font-bold text-[#00ff41]">{getStatusText().toUpperCase()}</p>
                 </div>
               </div>
 
               {status.status !== 'completed' && status.status !== 'failed' && (
-                <div className="w-full bg-gray-700 rounded-full h-2.5">
+                <div className="w-full bg-black/80 rounded-full h-3 border-2 border-[#00ff41] overflow-hidden">
                   <div 
-                    className="bg-purple-600 h-2.5 rounded-full transition-all duration-300" 
-                    style={{ width: `${status.progress || 0}%` }}
-                  ></div>
+                    className="bg-gradient-to-r from-[#ff0040] via-[#ff00ff] to-[#00ff41] h-full rounded-full transition-all duration-300 relative" 
+                    style={{ width: `${status.progress || 0}%`, boxShadow: '0 0 20px rgba(255, 0, 255, 0.8)' }}
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-scan-line"></div>
+                  </div>
                 </div>
               )}
               {status.progress !== undefined && (
-                <p className="text-sm text-gray-400 mt-2">{status.progress}% complete</p>
+                <p className="text-sm text-[#ff00ff] mt-3 font-mono font-bold">{status.progress}% COMPLETE</p>
               )}
             </div>
           )}
 
           {status?.status === 'completed' && (
-            <div className="bg-gray-800 rounded-xl p-8">
+            <div className="glass-neon rounded-xl p-8 border-2 animate-fade-in" style={{ boxShadow: '0 0 30px rgba(0, 255, 65, 0.3)' }}>
               <div className="mb-6">
-                <h2 className="text-2xl font-bold text-green-400 mb-4">
-                  ✅ Your video is ready!
+                <h2 className="text-3xl font-black neon-text-green mb-4 font-mono uppercase tracking-wider">
+                  ✅ YOUR VIDEO IS READY!
                 </h2>
               </div>
 
               <video
                 controls
-                className="w-full rounded-lg mb-6"
+                className="w-full rounded-lg mb-6 border-2 border-[#00ff41]"
                 src={`/api/video/${taskId}`}
               >
                 Your browser does not support the video tag.
@@ -115,33 +120,33 @@ function ResultPage() {
                 <a
                   href={`/api/video/${taskId}`}
                   download
-                  className="flex-1 py-3 px-6 bg-green-600 hover:bg-green-700 rounded-lg text-center font-semibold transition duration-200"
+                  className="flex-1 py-4 px-6 glass border-2 border-[#00ff41] text-[#00ff41] hover:bg-[#00ff41] hover:text-black rounded-lg text-center font-black transition-all duration-300 cyber-button font-mono uppercase tracking-wider"
                 >
-                  Download Video
+                  > DOWNLOAD VIDEO
                 </a>
                 <button
                   onClick={() => navigate('/search')}
-                  className="flex-1 py-3 px-6 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold transition duration-200"
+                  className="flex-1 py-4 px-6 glass border-2 border-[#ff00ff] text-[#ff00ff] hover:bg-[#ff00ff] hover:text-black rounded-lg font-black transition-all duration-300 cyber-button font-mono uppercase tracking-wider"
                 >
-                  Process Another
+                  > PROCESS ANOTHER
                 </button>
               </div>
             </div>
           )}
 
           {status?.status === 'failed' && (
-            <div className="bg-red-500 bg-opacity-20 border border-red-500 rounded-xl p-8">
-              <h2 className="text-2xl font-bold text-red-400 mb-4">
-                ❌ Processing Failed
+            <div className="glass border-2 border-[#ff0040] rounded-xl p-8 animate-fade-in" style={{ boxShadow: '0 0 30px rgba(255, 0, 64, 0.5)' }}>
+              <h2 className="text-3xl font-black neon-text-red mb-4 font-mono uppercase tracking-wider">
+                ❌ PROCESSING FAILED
               </h2>
-              <p className="text-gray-300 mb-6">
-                {status.error || 'An error occurred during processing'}
+              <p className="text-gray-300 mb-6 font-mono">
+                > {status.error || 'An error occurred during processing'}
               </p>
               <button
                 onClick={() => navigate('/search')}
-                className="py-3 px-6 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold transition duration-200"
+                className="py-4 px-8 glass border-2 border-[#ff00ff] text-[#ff00ff] hover:bg-[#ff00ff] hover:text-black rounded-lg font-black transition-all duration-300 cyber-button font-mono uppercase tracking-wider"
               >
-                Try Again
+                > TRY AGAIN
               </button>
             </div>
           )}

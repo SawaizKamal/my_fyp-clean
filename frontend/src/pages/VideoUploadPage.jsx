@@ -206,8 +206,29 @@ function VideoUploadPage() {
 
   const jumpToTimestamp = (startTime) => {
     if (videoRef.current) {
-      videoRef.current.currentTime = startTime;
-      videoRef.current.play();
+      const video = videoRef.current;
+      
+      // Wait for video to be ready for seeking
+      if (video.readyState < 2) {
+        // Video metadata not loaded yet, wait for it
+        const seekWhenReady = () => {
+          video.currentTime = startTime;
+          video.play().catch(err => {
+            console.error('Error playing video:', err);
+          });
+        };
+        video.addEventListener('loadedmetadata', seekWhenReady, { once: true });
+        // Also try to load if not already loading
+        if (video.readyState === 0) {
+          video.load();
+        }
+      } else {
+        // Video is ready, seek immediately
+        video.currentTime = startTime;
+        video.play().catch(err => {
+          console.error('Error playing video:', err);
+        });
+      }
     }
   };
 
@@ -228,10 +249,14 @@ function VideoUploadPage() {
   // Show loading while checking authentication
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-[#0a0a0a] text-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-purple-600 mx-auto mb-4"></div>
-          <p className="text-gray-400">Loading...</p>
+      <div className="min-h-screen bg-black text-white flex items-center justify-center relative overflow-hidden">
+        <div className="absolute inset-0 grid-overlay opacity-20"></div>
+        <div className="text-center relative z-10">
+          <div className="relative">
+            <div className="animate-spin rounded-full h-20 w-20 border-4 border-[#00ff41] border-t-transparent mx-auto mb-4 animate-neon-pulse"></div>
+            <div className="absolute inset-0 rounded-full border-4 border-[#ff00ff] border-t-transparent animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }}></div>
+          </div>
+          <p className="text-[#00ff41] font-mono text-lg animate-neon-glow">> INITIALIZING SYSTEM...</p>
         </div>
       </div>
     );
@@ -243,37 +268,44 @@ function VideoUploadPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white">
-      <div className="container mx-auto px-4 py-8">
+    <div className="min-h-screen bg-black text-white relative overflow-hidden">
+      {/* Animated background */}
+      <div className="absolute inset-0 grid-overlay opacity-20"></div>
+      <div className="absolute top-0 left-0 w-96 h-96 bg-[#ff0040] opacity-5 blur-3xl animate-float"></div>
+      <div className="absolute bottom-0 right-0 w-96 h-96 bg-[#00ff41] opacity-5 blur-3xl animate-float" style={{ animationDelay: '1s' }}></div>
+      
+      <div className="container mx-auto px-4 py-8 relative z-10">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-8 animate-slide-in-left">
           <button
             onClick={() => navigate('/chat')}
-            className="text-gray-400 hover:text-white px-4 py-2 rounded-lg hover:bg-gray-800 transition"
+            className="glass text-[#00ff41] hover:text-black hover:bg-[#00ff41] px-6 py-2 rounded-lg transition-all duration-300 cyber-button font-mono text-sm border border-[#00ff41]"
           >
-            ← Back to Chat
+            < BACK TO CHAT
           </button>
           <div className="flex items-center gap-4">
-            <span className="text-gray-400">Welcome, {user?.username}</span>
+            <span className="text-gray-300 font-mono text-sm">[ {user?.username} ]</span>
             <button
               onClick={() => navigate('/')}
-              className="text-gray-400 hover:text-white px-4 py-2 rounded-lg hover:bg-gray-800 transition"
+              className="glass text-[#ff00ff] hover:text-black hover:bg-[#ff00ff] px-6 py-2 rounded-lg transition-all duration-300 cyber-button font-mono text-sm border border-[#ff00ff]"
             >
-              Home
+              > HOME
             </button>
           </div>
         </div>
 
         {/* Main Content */}
         {!transcript ? (
-          <div className="max-w-4xl mx-auto">
-            <div className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-8 mb-6">
-              <h1 className="text-3xl font-bold text-purple-400 mb-6">Upload Video for Transcription</h1>
+          <div className="max-w-4xl mx-auto animate-fade-in">
+            <div className="glass-neon rounded-xl p-8 mb-6 border-2">
+              <h1 className="text-4xl font-black mb-6 neon-text-green font-mono uppercase tracking-wider animate-neon-glow">
+                > UPLOAD VIDEO FOR TRANSCRIPTION
+              </h1>
               
               {/* File Upload */}
               <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Select Video File
+                <label className="block text-sm font-bold text-[#00ff41] mb-3 font-mono uppercase">
+                  > SELECT VIDEO FILE
                 </label>
                 <div className="flex items-center gap-4">
                   <input
@@ -285,39 +317,45 @@ function VideoUploadPage() {
                   />
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="px-6 py-3 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold transition"
+                    className="px-8 py-4 bg-gradient-to-r from-[#ff0040] to-[#ff00ff] hover:from-[#ff00ff] hover:to-[#00ff41] rounded-lg font-black transition-all duration-300 cyber-button font-mono text-sm uppercase tracking-wider transform hover:scale-105 animate-neon-pulse"
+                    style={{ boxShadow: '0 0 20px rgba(255, 0, 64, 0.5)' }}
                   >
-                    Choose Video File
+                    > CHOOSE FILE
                   </button>
                   {file && (
-                    <span className="text-gray-300">
-                      {file.name} ({(file.size / (1024 * 1024)).toFixed(2)} MB)
-                    </span>
+                    <div className="glass border border-[#00ff41] rounded-lg px-4 py-2">
+                      <span className="text-[#00ff41] font-mono text-sm">
+                        {file.name} ({(file.size / (1024 * 1024)).toFixed(2)} MB)
+                      </span>
+                    </div>
                   )}
                 </div>
               </div>
 
               {/* User Query (Optional) */}
               <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  What problem are you trying to solve? (Optional)
+                <label className="block text-sm font-bold text-[#ff00ff] mb-2 font-mono uppercase">
+                  > PROBLEM QUERY (OPTIONAL)
                 </label>
-                <p className="text-xs text-gray-500 mb-2">
-                  Provide a question or problem description to help identify solution segments in the video
+                <p className="text-xs text-gray-400 mb-3 font-mono">
+                  Provide a question or problem description to help identify solution segments
                 </p>
                 <textarea
                   value={userQuery}
                   onChange={(e) => setUserQuery(e.target.value)}
                   placeholder="e.g., How do I fix this error? How does this algorithm work?"
-                  className="w-full px-4 py-3 rounded-xl bg-[#1a1a1a] text-white placeholder-gray-400 border border-[#2a2a2a] focus:outline-none focus:ring-2 focus:ring-purple-600 focus:border-purple-600 min-h-[100px] transition"
+                  className="w-full px-4 py-3 rounded-xl bg-black/80 text-[#00ff41] placeholder-gray-500 border-2 border-[#ff00ff] focus:outline-none focus:ring-2 focus:ring-[#ff00ff] focus:border-[#ff00ff] min-h-[100px] transition-all duration-300 font-mono text-sm focus:shadow-[0_0_20px_rgba(255,0,255,0.3)]"
                   rows="3"
                 />
               </div>
 
               {/* Error Display */}
               {error && (
-                <div className="bg-red-500 bg-opacity-20 border border-red-500 text-red-300 px-6 py-4 rounded-xl mb-6">
-                  {error}
+                <div className="glass border-2 border-[#ff0040] text-[#ff0040] px-6 py-4 rounded-xl mb-6 animate-slide-in-left" style={{ boxShadow: '0 0 20px rgba(255, 0, 64, 0.5)' }}>
+                  <div className="flex items-center gap-2 font-mono font-bold">
+                    <span>> ERROR:</span>
+                    <span className="font-normal">{error}</span>
+                  </div>
                 </div>
               )}
 
@@ -325,28 +363,31 @@ function VideoUploadPage() {
               <button
                 onClick={handleUpload}
                 disabled={!file || uploading}
-                className="w-full px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 rounded-xl font-semibold transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full px-8 py-5 bg-gradient-to-r from-[#ff0040] via-[#ff00ff] to-[#00ff41] hover:from-[#ff00ff] hover:via-[#00ff41] hover:to-[#ff0040] rounded-xl font-black transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed cyber-button font-mono text-lg uppercase tracking-wider transform hover:scale-105 disabled:transform-none"
+                style={{ boxShadow: '0 0 30px rgba(255, 0, 64, 0.5), 0 0 60px rgba(255, 0, 255, 0.3)' }}
               >
-                {uploading ? 'Uploading & Transcribing...' : 'Upload & Transcribe Video'}
+                {uploading ? '> PROCESSING...' : '> UPLOAD & TRANSCRIBE'}
               </button>
 
               {/* Progress Bar */}
               {(uploading || transcribing) && (
-                <div className="mt-6">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-gray-400">
-                      {transcribing ? 'Transcribing video...' : 'Uploading...'}
+                <div className="mt-6 animate-fade-in">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-mono text-[#00ff41] uppercase">
+                      > {transcribing ? 'TRANSCRIBING VIDEO...' : 'UPLOADING...'}
                     </span>
-                    <span className="text-sm text-purple-400">{progress}%</span>
+                    <span className="text-sm font-mono font-bold text-[#ff00ff] neon-text-pink">{progress}%</span>
                   </div>
-                  <div className="w-full bg-gray-700 rounded-full h-2">
+                  <div className="w-full bg-black/80 rounded-full h-3 border-2 border-[#00ff41] overflow-hidden">
                     <div
-                      className="bg-gradient-to-r from-purple-600 to-pink-600 h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${progress}%` }}
-                    ></div>
+                      className="bg-gradient-to-r from-[#ff0040] via-[#ff00ff] to-[#00ff41] h-full rounded-full transition-all duration-300 relative"
+                      style={{ width: `${progress}%`, boxShadow: '0 0 20px rgba(255, 0, 255, 0.8)' }}
+                    >
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-scan-line"></div>
+                    </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">
-                    This may take a few minutes depending on video length...
+                  <p className="text-xs text-gray-400 mt-3 font-mono">
+                    > Processing time varies based on video length...
                   </p>
                 </div>
               )}
@@ -354,18 +395,33 @@ function VideoUploadPage() {
           </div>
         ) : (
           /* Video Player with Transcript */
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
             {/* Video Player - Takes 2/3 of the width */}
             <div className="lg:col-span-2">
-              <div className="bg-black rounded-xl overflow-hidden mb-4">
+              <div className="bg-black rounded-xl overflow-hidden mb-4 border-2 border-[#00ff41] shadow-[0_0_30px_rgba(0,255,65,0.3)]">
                 <video
                   ref={videoRef}
                   controls
+                  preload="metadata"
                   className="w-full"
-                  src={transcript.video_url ? api.defaults.baseURL + transcript.video_url : undefined}
+                  src={transcript.video_id ? `${api.defaults.baseURL}/video/${transcript.video_id}?token=${token}` : undefined}
                   onLoadedMetadata={() => {
                     if (videoRef.current) {
                       videoRef.current.currentTime = 0;
+                    }
+                  }}
+                  onError={(e) => {
+                    console.error('Video error:', e);
+                    const video = e.target;
+                    if (video.error) {
+                      console.error('Video error details:', {
+                        error: video.error,
+                        errorCode: video.error?.code,
+                        errorMessage: video.error?.message,
+                        networkState: video.networkState,
+                        readyState: video.readyState,
+                        src: video.src
+                      });
                     }
                   }}
                 >
@@ -374,19 +430,19 @@ function VideoUploadPage() {
               </div>
 
               {/* Video Info */}
-              <div className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-4 mb-4">
+              <div className="glass-neon rounded-xl p-4 mb-4 border-2">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-400">File: {transcript.filename}</p>
-                    <p className="text-sm text-gray-400">Duration: {formatTime(transcript.duration)}</p>
-                    <p className="text-sm text-gray-400">Language: {transcript.language}</p>
+                  <div className="font-mono text-sm space-y-1">
+                    <p className="text-[#00ff41]">> FILE: <span className="text-white">{transcript.filename}</span></p>
+                    <p className="text-[#00ff41]">> DURATION: <span className="text-white">{formatTime(transcript.duration)}</span></p>
+                    <p className="text-[#00ff41]">> LANGUAGE: <span className="text-white">{transcript.language}</span></p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm text-purple-400">
-                      ⭐ {transcript.solution_segments?.length || 0} Solution Segments
+                    <p className="text-sm font-mono font-bold neon-text-pink">
+                      ⭐ {transcript.solution_segments?.length || 0} SOLUTION SEGMENTS
                     </p>
-                    <p className="text-xs text-gray-500">
-                      {transcript.total_segments} Total Segments
+                    <p className="text-xs text-gray-400 font-mono">
+                      {transcript.total_segments} TOTAL SEGMENTS
                     </p>
                   </div>
                 </div>
@@ -403,18 +459,18 @@ function VideoUploadPage() {
                     fileInputRef.current.value = '';
                   }
                 }}
-                className="px-6 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg font-semibold transition mb-4"
+                className="px-6 py-3 glass border border-[#ff0040] text-[#ff0040] hover:bg-[#ff0040] hover:text-black rounded-lg font-bold transition-all duration-300 cyber-button font-mono text-sm uppercase mb-4"
               >
-                Upload Another Video
+                > UPLOAD ANOTHER VIDEO
               </button>
             </div>
 
             {/* Transcript Sidebar - Takes 1/3 of the width */}
             <div className="lg:col-span-1">
-              <div className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-4 h-[calc(100vh-200px)] flex flex-col">
-                <h2 className="text-xl font-bold text-purple-400 mb-4 flex items-center gap-2">
-                  📜 Transcript
-                  <span className="text-xs text-gray-400 font-normal">
+              <div className="glass-neon rounded-xl p-4 h-[calc(100vh-200px)] flex flex-col border-2">
+                <h2 className="text-xl font-black neon-text-green mb-4 flex items-center gap-2 font-mono uppercase tracking-wider">
+                  > TRANSCRIPT
+                  <span className="text-xs text-gray-400 font-normal normal-case">
                     ({transcript.segments?.length || 0} segments)
                   </span>
                 </h2>
@@ -430,13 +486,13 @@ function VideoUploadPage() {
                         data-segment-index={index}
                         onClick={() => jumpToTimestamp(segment.start)}
                         className={`
-                          p-3 rounded-lg cursor-pointer transition-all duration-200
+                          p-3 rounded-lg cursor-pointer transition-all duration-300 font-mono text-sm
                           ${isCurrent 
-                            ? 'bg-purple-600 bg-opacity-30 border-2 border-purple-500 shadow-lg shadow-purple-500/50' 
-                            : 'bg-[#1a1a1a] border border-[#2a2a2a] hover:bg-[#252525] hover:border-purple-600/50'
+                            ? 'glass-neon border-2 border-[#00ff41] shadow-[0_0_20px_rgba(0,255,65,0.5)]' 
+                            : 'glass border border-[#ff00ff] hover:border-[#00ff41] hover:shadow-[0_0_10px_rgba(0,255,65,0.3)]'
                           }
-                          ${isSolution ? 'ring-2 ring-yellow-500 ring-opacity-70 bg-yellow-500 bg-opacity-10' : ''}
-                          ${isSolution && isCurrent ? 'ring-4 ring-yellow-400 ring-opacity-80' : ''}
+                          ${isSolution ? 'ring-2 ring-[#ff00ff] ring-opacity-70 bg-[#ff00ff] bg-opacity-10' : ''}
+                          ${isSolution && isCurrent ? 'ring-4 ring-[#ff00ff] ring-opacity-90 shadow-[0_0_30px_rgba(255,0,255,0.6)]' : ''}
                         `}
                         style={{
                           transform: isCurrent ? 'scale(1.02)' : 'scale(1)',
@@ -448,20 +504,20 @@ function VideoUploadPage() {
                               e.stopPropagation();
                               jumpToTimestamp(segment.start);
                             }}
-                            className="text-xs font-mono text-purple-400 font-semibold hover:text-purple-300 hover:underline transition-colors"
+                            className="text-xs font-mono text-[#00ff41] font-bold hover:text-[#00ff41] hover:underline transition-colors neon-text-green"
                           >
-                            {segment.timestamp}
+                            > {segment.timestamp}
                           </button>
                           {isSolution && (
-                            <span className="text-xs bg-yellow-500 bg-opacity-30 text-yellow-200 px-2 py-0.5 rounded font-semibold animate-pulse">
-                              ⭐ Solution
+                            <span className="text-xs glass border border-[#ff00ff] text-[#ff00ff] px-2 py-0.5 rounded font-bold animate-neon-pulse font-mono">
+                              ⭐ SOLUTION
                             </span>
                           )}
                         </div>
                         <p 
-                          className={`text-sm leading-relaxed ${isSolution ? 'text-yellow-100 font-semibold' : 'text-gray-300'}`}
+                          className={`text-sm leading-relaxed ${isSolution ? 'text-[#ff00ff] font-bold neon-text-pink' : 'text-gray-300'}`}
                           style={{
-                            fontWeight: isSolution ? 600 : 400,
+                            fontWeight: isSolution ? 700 : 400,
                           }}
                         >
                           {segment.text}
@@ -473,9 +529,9 @@ function VideoUploadPage() {
 
                 {/* Solution Segments Summary */}
                 {transcript.solution_segments && transcript.solution_segments.length > 0 && (
-                  <div className="mt-4 pt-4 border-t border-[#2a2a2a]">
-                    <p className="text-xs text-gray-400 mb-2">
-                      💡 Click on highlighted segments (⭐) to jump to solution parts
+                  <div className="mt-4 pt-4 border-t border-[#ff00ff]">
+                    <p className="text-xs text-gray-400 mb-3 font-mono">
+                      > Click highlighted segments (⭐) to jump to solutions
                     </p>
                     <div className="space-y-2">
                       <button
@@ -485,9 +541,9 @@ function VideoUploadPage() {
                             jumpToTimestamp(transcript.segments[firstSolution].start);
                           }
                         }}
-                        className="w-full px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded-lg text-sm font-semibold transition transform hover:scale-105"
+                        className="w-full px-4 py-2 glass border border-[#ff00ff] text-[#ff00ff] hover:bg-[#ff00ff] hover:text-black rounded-lg text-sm font-bold transition-all duration-300 transform hover:scale-105 cyber-button font-mono uppercase"
                       >
-                        ⭐ Jump to First Solution
+                        ⭐ JUMP TO FIRST SOLUTION
                       </button>
                       {transcript.solution_segments.length > 1 && (
                         <button
@@ -498,14 +554,14 @@ function VideoUploadPage() {
                               element.scrollIntoView({ behavior: 'smooth', block: 'center' });
                             }
                           }}
-                          className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm font-semibold transition transform hover:scale-105"
+                          className="w-full px-4 py-2 glass border border-[#00ff41] text-[#00ff41] hover:bg-[#00ff41] hover:text-black rounded-lg text-sm font-bold transition-all duration-300 transform hover:scale-105 cyber-button font-mono uppercase"
                         >
-                          📍 Scroll to Solutions
+                          📍 SCROLL TO SOLUTIONS
                         </button>
                       )}
                     </div>
-                    <p className="text-xs text-yellow-400 mt-2 text-center">
-                      {transcript.solution_segments.length} solution segment{transcript.solution_segments.length !== 1 ? 's' : ''} found
+                    <p className="text-xs neon-text-pink mt-3 text-center font-mono font-bold">
+                      {transcript.solution_segments.length} SOLUTION SEGMENT{transcript.solution_segments.length !== 1 ? 'S' : ''} FOUND
                     </p>
                   </div>
                 )}

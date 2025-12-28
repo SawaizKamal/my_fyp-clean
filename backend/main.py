@@ -1,7 +1,7 @@
-import sys, os, uuid, re
+import sys, os, uuid, re, json
 from enum import Enum
 from typing import List, Optional, Dict
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, File, UploadFile, Form
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, File, UploadFile, Form, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -161,16 +161,21 @@ class ChatResponse(BaseModel):
     error_analysis: Optional[str] = None
 
 # ---------------- HELPERS ----------------
-async def get_gpt4o_response(prompt: str):
+async def get_gpt4o_response(prompt: str, temperature: float = 0.3):
+    """
+    Get response from GPT-4o model.
+    Lower temperature (0.3) for more deterministic, focused responses.
+    """
     try:
         res = OPENAI_CLIENT.chat.completions.create(
             model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=3000
+            max_tokens=3000,
+            temperature=temperature
         )
         return res.choices[0].message.content.strip()
     except Exception as e:
-        print("GPT ERROR:", e)
+        logger.error(f"GPT ERROR: {e}", exc_info=True)
         return None
 
 def parse_segments(text: str):
@@ -311,60 +316,125 @@ async def transcribe_uploaded_video_task(task_id: str, video_path: str, video_id
         solution_segments = []
         if user_query:
             logger.info(f"Identifying solution segments using GPT-4 for query: {user_query[:100]}")
-            solution_prompt = f"""Analyze this video transcript and identify segments that contain solutions, explanations, or key teaching moments relevant to the user's question.
+            
+            # Build transcript with clear, prominent index labels for better GPT accuracy
+            indexed_transcript_lines = []
+            for idx, seg in enumerate(transcript_segments):
+                timestamp_str = seg['timestamp']
+                text = seg['text']
+                # Make index VERY clear and prominent to reduce indexing errors
+                indexed_transcript_lines.append(f"SEGMENT_INDEX_{idx} | [{timestamp_str}] {text}")
+            
+            indexed_transcript = "\n".join(indexed_transcript_lines)
+            
+            solution_prompt = f"""You are an expert at identifying solution segments in educational video transcripts. Analyze the transcript below and identify ONLY the segments that directly contain solutions, explanations, or key teaching moments relevant to the user's question.
 
-User's Question/Query: {user_query}
+USER'S QUESTION/QUERY: "{user_query}"
 
-Transcript:
-{full_transcript}
+TRANSCRIPT (each line format: SEGMENT_INDEX_X | [MM:SS] text):
+Pay close attention to the SEGMENT_INDEX number at the start of each line - use this EXACT number in your response.
 
-Return a JSON array of segment indices (0-based) that contain solutions or key explanations. Focus on segments that:
-1. Explain how to solve the problem mentioned in the user's query
-2. Show code implementations or fixes
-3. Provide step-by-step instructions
-4. Explain concepts clearly related to the query
-5. Give practical examples that answer the question
+{indexed_transcript}
 
-Skip segments that are:
-- Introductions or greetings
-- Filler words or pauses
-- Off-topic discussions
-- Outros or sign-offs
-- Not relevant to the user's query
+INSTRUCTIONS:
+1. Read through ALL segments carefully
+2. Identify segments by their SEGMENT_INDEX number (the number after SEGMENT_INDEX_) that DIRECTLY address the user's question
+3. Use the EXACT SEGMENT_INDEX number as shown in the transcript above (e.g., if a line starts with "SEGMENT_INDEX_5", use 5 in your response)
+4. Focus on segments that:
+   - Explain HOW to solve the specific problem mentioned
+   - Show code implementations, fixes, or corrections
+   - Provide step-by-step instructions or procedures
+   - Explain core concepts clearly related to the query
+   - Give practical examples that directly answer the question
+   - Contain actionable advice or solutions
 
-Return ONLY a JSON array like: [0, 5, 12, 23] or [] if no clear solutions found.
-Do not include any other text, just the JSON array."""
+5. EXCLUDE segments that:
+   - Are introductions, greetings, or filler ("hey", "um", "let's get started")
+   - Are off-topic or unrelated to the query
+   - Are outros, sign-offs, or closing remarks
+   - Only mention the problem without providing solutions
+   - Are vague or don't add value to answering the question
+
+6. Be PRECISE: Only include segments that genuinely contain solutions or explanations. Quality over quantity.
+
+OUTPUT FORMAT:
+Return ONLY a valid JSON array of SEGMENT_INDEX numbers (integers), nothing else.
+Example valid responses: [2, 5, 12] or [0, 3, 7, 15] or []
+
+CRITICAL: 
+- Use the SEGMENT_INDEX numbers EXACTLY as shown in the transcript (the number after SEGMENT_INDEX_)
+- Return ONLY the JSON array, no explanations, no markdown, no other text
+- Do NOT use any numbering other than the SEGMENT_INDEX numbers provided"""
             
             try:
-                solution_response = await get_gpt4o_response(solution_prompt)
+                solution_response = await get_gpt4o_response(solution_prompt, temperature=0.2)
                 import json
                 import re
                 
-                json_match = re.search(r'\[[\d,\s]*\]', solution_response or "")
-                if json_match:
-                    solution_segments = json.loads(json_match.group())
-                else:
-                    try:
-                        solution_segments = json.loads(solution_response)
-                    except:
-                        solution_segments = []
-                
-                if not isinstance(solution_segments, list):
+                if not solution_response:
+                    logger.warning("GPT-4o returned empty response for solution segments")
                     solution_segments = []
-                solution_segments = [int(i) for i in solution_segments if isinstance(i, (int, str)) and str(i).isdigit()]
-                solution_segments = [i for i in solution_segments if 0 <= i < len(transcript_segments)]
-                
-                logger.info(f"Identified {len(solution_segments)} solution segments")
+                else:
+                    # Try multiple parsing strategies
+                    solution_segments = []
+                    
+                    # Strategy 1: Look for JSON array pattern in response
+                    json_match = re.search(r'\[[\d,\s]*\]', solution_response)
+                    if json_match:
+                        try:
+                            solution_segments = json.loads(json_match.group())
+                        except json.JSONDecodeError:
+                            pass
+                    
+                    # Strategy 2: Try parsing entire response as JSON
+                    if not solution_segments:
+                        try:
+                            parsed = json.loads(solution_response)
+                            if isinstance(parsed, list):
+                                solution_segments = parsed
+                            elif isinstance(parsed, dict) and "segments" in parsed:
+                                solution_segments = parsed["segments"]
+                        except json.JSONDecodeError:
+                            pass
+                    
+                    # Strategy 3: Extract numbers from response
+                    if not solution_segments:
+                        numbers = re.findall(r'\d+', solution_response)
+                        solution_segments = [int(n) for n in numbers if n.isdigit()]
+                    
+                    # Validate and filter
+                    if not isinstance(solution_segments, list):
+                        solution_segments = []
+                    solution_segments = [int(i) for i in solution_segments if isinstance(i, (int, str)) and str(i).isdigit()]
+                    solution_segments = [i for i in solution_segments if 0 <= i < len(transcript_segments)]
+                    # Remove duplicates and sort
+                    solution_segments = sorted(list(set(solution_segments)))
+                    
+                    logger.info(f"Identified {len(solution_segments)} solution segments: {solution_segments[:10]}{'...' if len(solution_segments) > 10 else ''}")
+                    if solution_response:
+                        logger.debug(f"GPT-4o response preview: {solution_response[:200]}...")
             except Exception as e:
-                logger.warning(f"Failed to identify solution segments: {e}")
+                logger.error(f"Failed to identify solution segments: {e}", exc_info=True)
                 solution_segments = []
         
         # Store results in task
+        video_url_value = f"/api/video/upload/{video_id}"
+        # #region agent log
+        import json
+        import time
+        log_path = os.path.join(BASE_DIR, '.cursor', 'debug.log')
+        try:
+            os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            with open(log_path, 'a', encoding='utf-8') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"main.py:425","message":"Setting video_url in task","data":{"task_id":task_id,"video_id":video_id,"video_url":video_url_value,"video_url_type":type(video_url_value).__name__},"timestamp":int(time.time()*1000)})+'\n')
+        except Exception as log_err:
+            logger.error(f"Log write failed: {log_err}", exc_info=True)
+        # #endregion
         tasks[task_id] = {
             "status": TaskStatus.COMPLETED,
             "progress": 100,
             "video_id": video_id,
-            "video_url": f"/video/upload/{video_id}",
+            "video_url": video_url_value,
             "filename": filename,
             "segments": transcript_segments,
             "solution_segments": solution_segments,
@@ -475,12 +545,55 @@ async def status(task_id: str, user=Depends(auth.get_current_user)):
         raise HTTPException(404, "Task not found")
     return tasks[task_id]
 
-@app.get("/api/video/{task_id}")
-async def video(task_id: str, user=Depends(auth.get_current_user)):
-    task = tasks.get(task_id)
-    if not task or task["status"] != TaskStatus.COMPLETED:
-        raise HTTPException(400, "Not ready")
-    return FileResponse(task["output_path"], media_type="video/mp4")
+@app.get("/api/video/{video_id}")
+async def video(video_id: str, token: Optional[str] = Query(None)):
+    """
+    Stream an uploaded video file for playback with range request support for seeking.
+    Accepts authentication via token query parameter (for video elements).
+    """
+    # Validate token from query parameter
+    if not token:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    user = await auth.get_current_user_optional(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    # Try different video extensions
+    base_path = os.path.join(DATA_DIR, video_id)
+    possible_extensions = ['.mp4', '.webm', '.mkv', '.avi', '.mov', '.m4v']
+    
+    video_path = None
+    for ext in possible_extensions:
+        test_path = base_path + ext
+        if os.path.exists(test_path):
+            video_path = test_path
+            break
+    
+    if not video_path:
+        raise HTTPException(404, "Video not found")
+    
+    # Determine media type based on extension
+    ext = os.path.splitext(video_path)[1].lower()
+    media_types = {
+        '.mp4': 'video/mp4',
+        '.webm': 'video/webm',
+        '.mkv': 'video/x-matroska',
+        '.avi': 'video/x-msvideo',
+        '.mov': 'video/quicktime',
+        '.m4v': 'video/x-m4v'
+    }
+    media_type = media_types.get(ext, 'video/mp4')
+    
+    # FileResponse automatically handles Range requests for video seeking
+    # Explicitly set Accept-Ranges header to ensure browsers can seek properly
+    return FileResponse(
+        video_path, 
+        media_type=media_type,
+        headers={
+            "Accept-Ranges": "bytes"
+        }
+    )
 
 
 @app.post("/api/transcribe/local")
@@ -575,6 +688,17 @@ async def get_transcription_status(task_id: str, user=Depends(auth.get_current_u
     Get transcription status and results for a task.
     Returns the full transcript data when status is 'completed'.
     """
+    # #region agent log
+    import json
+    import time
+    log_path = os.path.join(BASE_DIR, '.cursor', 'debug.log')
+    try:
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"AUTH","location":"main.py:642","message":"Status endpoint reached","data":{"task_id":task_id,"user_authenticated":user is not None,"username":user.get("username") if user else None},"timestamp":int(time.time()*1000)})+'\n')
+    except Exception:
+        pass
+    # #endregion
     if task_id not in tasks:
         raise HTTPException(404, "Task not found")
     
@@ -582,7 +706,7 @@ async def get_transcription_status(task_id: str, user=Depends(auth.get_current_u
     
     # If completed, return full results
     if task.get("status") == TaskStatus.COMPLETED:
-        return {
+        response_data = {
             "task_id": task_id,
             "status": "completed",
             "progress": task.get("progress", 100),
@@ -596,6 +720,18 @@ async def get_transcription_status(task_id: str, user=Depends(auth.get_current_u
             "language": task.get("language", "unknown"),
             "total_segments": task.get("total_segments", 0)
         }
+        # #region agent log
+        import json
+        import time
+        log_path = os.path.join(BASE_DIR, '.cursor', 'debug.log')
+        try:
+            os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            with open(log_path, 'a', encoding='utf-8') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"main.py:660","message":"Status endpoint returning video_url","data":{"task_id":task_id,"video_url":response_data.get("video_url"),"video_url_type":type(response_data.get("video_url")).__name__,"video_id":response_data.get("video_id")},"timestamp":int(time.time()*1000)})+'\n')
+        except Exception as log_err:
+            logger.error(f"Log write failed: {log_err}", exc_info=True)
+        # #endregion
+        return response_data
     
     # If failed, return error
     if task.get("status") == TaskStatus.FAILED:
@@ -615,10 +751,62 @@ async def get_transcription_status(task_id: str, user=Depends(auth.get_current_u
 
 
 @app.get("/api/video/upload/{video_id}")
-async def stream_uploaded_video(video_id: str, user=Depends(auth.get_current_user)):
+async def stream_uploaded_video(video_id: str, request: Request, token: Optional[str] = None):
     """
     Stream an uploaded video file for playback.
+    Accepts authentication via Authorization header or token query parameter (for video elements).
     """
+    # #region agent log
+    import json
+    import time
+    log_path = os.path.join(BASE_DIR, '.cursor', 'debug.log')
+    try:
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"main.py:618","message":"Video stream endpoint called","data":{"video_id":video_id,"has_token_param":token is not None,"token_length":len(token) if token else 0},"timestamp":int(time.time()*1000)})+'\n')
+    except Exception as log_err:
+        logger.error(f"Log write failed: {log_err}", exc_info=True)
+    # #endregion
+    
+    user = None
+    
+    # Try to get token from Authorization header first
+    if request:
+        auth_header = request.headers.get("Authorization")
+        # #region agent log
+        try:
+            with open(log_path, 'a', encoding='utf-8') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"main.py:630","message":"Auth header check","data":{"has_auth_header":auth_header is not None,"auth_header_start":auth_header[:20] if auth_header else None},"timestamp":int(time.time()*1000)})+'\n')
+        except Exception:
+            pass
+        # #endregion
+        if auth_header and auth_header.startswith("Bearer "):
+            header_token = auth_header.split("Bearer ")[1]
+            user = await auth.get_current_user_optional(header_token)
+    
+    # If no user from header, try query parameter token
+    if not user and token:
+        # #region agent log
+        try:
+            with open(log_path, 'a', encoding='utf-8') as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"main.py:637","message":"Trying query param token","data":{"has_token":True},"timestamp":int(time.time()*1000)})+'\n')
+        except Exception:
+            pass
+        # #endregion
+        user = await auth.get_current_user_optional(token)
+    
+    # #region agent log
+    try:
+        with open(log_path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"E","location":"main.py:642","message":"Auth result","data":{"user_authenticated":user is not None,"has_username":user.get("username") if user else False},"timestamp":int(time.time()*1000)})+'\n')
+    except Exception:
+        pass
+    # #endregion
+    
+    # Require authentication
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
     # Try different video extensions
     base_path = os.path.join(DATA_DIR, video_id)
     possible_extensions = ['.mp4', '.webm', '.mkv', '.avi', '.mov', '.m4v']
@@ -788,27 +976,40 @@ async def transcribe_youtube_video(video_id: str, user=Depends(auth.get_current_
                         full_transcript = "\n".join(full_transcript_lines)
                         
                         # Use OpenAI to identify solution segments
-                        logger.info("Identifying solution segments with OpenAI...")
-                        solution_prompt = f"""Analyze this video transcript and identify segments that contain solutions, explanations, or key teaching moments.
+                        logger.info("Identifying solution segments with OpenAI GPT-4o...")
+                        solution_prompt = f"""You are an expert at analyzing educational video transcripts to identify solution segments. Your task is to find segments that contain actual solutions, explanations, or key teaching moments.
 
-Transcript:
+TRANSCRIPT (each line format: [MM:SS] text):
 {full_transcript}
 
-Return a JSON array of segment indices (0-based) that contain solutions or key explanations. Focus on segments that:
-1. Explain how to solve problems
-2. Show code implementations
-3. Provide step-by-step instructions
-4. Explain concepts clearly
-5. Give practical examples
+INSTRUCTIONS:
+1. Carefully read through ALL transcript segments
+2. Identify segments (by their 0-based index) that contain:
+   - Step-by-step solutions to problems
+   - Code implementations, fixes, or corrections
+   - Clear explanations of how things work
+   - Practical examples that demonstrate solutions
+   - Actionable instructions or procedures
+   - Key concepts explained in detail
+   - Troubleshooting steps or fixes
 
-Skip segments that are:
-- Introductions or greetings
-- Filler words or pauses
-- Off-topic discussions
-- Outros or sign-offs
+3. EXCLUDE segments that are:
+   - Introductions, greetings, or sign-offs ("hey", "welcome", "thanks for watching")
+   - Filler words, pauses, or "um", "uh", "let me think"
+   - Off-topic discussions or tangents
+   - Questions without answers
+   - Vague statements without substance
+   - Outros or closing remarks
 
-Return ONLY a JSON array like: [0, 5, 12, 23] or [] if no clear solutions found.
-Do not include any other text, just the JSON array."""
+4. Be PRECISE: Only include segments that genuinely contain solutions or valuable explanations. Quality over quantity.
+
+5. Consider context: A segment explaining "how to fix X" is more valuable than "I had a problem with X" without the solution.
+
+OUTPUT FORMAT:
+Return ONLY a valid JSON array of segment indices (0-based integers), nothing else.
+Example valid responses: [2, 5, 12] or [0, 3, 7, 15] or []
+
+CRITICAL: Return ONLY the JSON array, no explanations, no markdown formatting, no other text. Just the array."""
                         
                         try:
                             solution_response = await get_gpt4o_response(solution_prompt)
@@ -891,27 +1092,40 @@ Do not include any other text, just the JSON array."""
         full_transcript = "\n".join(full_transcript_lines)
         
         # Step 4: Use OpenAI to identify solution segments
-        logger.info("Identifying solution segments with OpenAI...")
-        solution_prompt = f"""Analyze this video transcript and identify segments that contain solutions, explanations, or key teaching moments.
+        logger.info("Identifying solution segments with OpenAI GPT-4o...")
+        solution_prompt = f"""You are an expert at analyzing educational video transcripts to identify solution segments. Your task is to find segments that contain actual solutions, explanations, or key teaching moments.
 
-Transcript:
+TRANSCRIPT (each line format: [MM:SS] text):
 {full_transcript}
 
-Return a JSON array of segment indices (0-based) that contain solutions or key explanations. Focus on segments that:
-1. Explain how to solve problems
-2. Show code implementations
-3. Provide step-by-step instructions
-4. Explain concepts clearly
-5. Give practical examples
+INSTRUCTIONS:
+1. Carefully read through ALL transcript segments
+2. Identify segments (by their 0-based index) that contain:
+   - Step-by-step solutions to problems
+   - Code implementations, fixes, or corrections
+   - Clear explanations of how things work
+   - Practical examples that demonstrate solutions
+   - Actionable instructions or procedures
+   - Key concepts explained in detail
+   - Troubleshooting steps or fixes
 
-Skip segments that are:
-- Introductions or greetings
-- Filler words or pauses
-- Off-topic discussions
-- Outros or sign-offs
+3. EXCLUDE segments that are:
+   - Introductions, greetings, or sign-offs ("hey", "welcome", "thanks for watching")
+   - Filler words, pauses, or "um", "uh", "let me think"
+   - Off-topic discussions or tangents
+   - Questions without answers
+   - Vague statements without substance
+   - Outros or closing remarks
 
-Return ONLY a JSON array like: [0, 5, 12, 23] or [] if no clear solutions found.
-Do not include any other text, just the JSON array."""
+4. Be PRECISE: Only include segments that genuinely contain solutions or valuable explanations. Quality over quantity.
+
+5. Consider context: A segment explaining "how to fix X" is more valuable than "I had a problem with X" without the solution.
+
+OUTPUT FORMAT:
+Return ONLY a valid JSON array of segment indices (0-based integers), nothing else.
+Example valid responses: [2, 5, 12] or [0, 3, 7, 15] or []
+
+CRITICAL: Return ONLY the JSON array, no explanations, no markdown formatting, no other text. Just the array."""
         
         try:
             solution_response = await get_gpt4o_response(solution_prompt)
@@ -982,10 +1196,26 @@ Do not include any other text, just the JSON array."""
 
 
 @app.get("/api/video/stream/{video_id}")
-async def stream_video(video_id: str, user=Depends(auth.get_current_user)):
+async def stream_video(video_id: str, request: Request, token: Optional[str] = None):
     """
     Stream a downloaded video file.
+    Accepts authentication via Authorization header or token query parameter (for video elements).
     """
+    user = None
+    
+    # Try to get token from Authorization header first
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        header_token = auth_header.split("Bearer ")[1]
+        user = await auth.get_current_user_optional(header_token)
+    
+    # If no user from header, try query parameter token
+    if not user and token:
+        user = await auth.get_current_user_optional(token)
+    
+    # Require authentication
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
     # Try different video extensions
     base_path = os.path.join(DATA_DIR, video_id)
     possible_extensions = ['.mp4', '.webm', '.mkv', '.avi']
@@ -1346,18 +1576,113 @@ async def chat(req: ChatRequest, user=Depends(auth.get_current_user)):
 
 # ---------------- FRONTEND ----------------
 if os.path.exists(DIST_DIR):
-    print(f"✅ dist_build found at {DIST_DIR}")
+    print(f"[OK] dist_build found at {DIST_DIR}")
     print("Files:", os.listdir(DIST_DIR))
     app.mount("/", StaticFiles(directory=DIST_DIR, html=True), name="frontend")
 else:
-    print(f"⚠️ dist_build not found at {DIST_DIR}")
+    print(f"[WARNING] dist_build not found at {DIST_DIR}")
     print("Contents of backend:", os.listdir(BASE_DIR))
 
 @app.get("/favicon.ico")
 async def favicon():
     return RedirectResponse("https://www.google.com/favicon.ico")
 
+# ---------------- CODE PATTERN & ALGORITHM ANALYSIS ----------------
+async def analyze_code_pattern_and_algorithm(code_snippet: str) -> Dict:
+    """
+    Analyze code snippet at cursor position to identify design patterns and algorithms.
+    Uses specialized GPT prompt for pattern and algorithm detection.
+    
+    Args:
+        code_snippet: Code snippet to analyze (from cursor position)
+    
+    Returns:
+        Dict with "pattern" and "algorithm" fields (or "Unknown" if not identified)
+    """
+    prompt = """You are an expert code pattern and algorithm analyzer. The user will provide a code snippet corresponding to the current cursor position in their editor. Your task is to:
+
+1. Identify any **Design Pattern(s)** present in the snippet (e.g., Singleton, Proxy, Observer, Factory, Strategy, etc.).
+2. Identify any **Algorithm(s)** present in the snippet (e.g., Sorting, Searching, Graph algorithms, etc.).
+
+Guidelines:
+- Analyze only the code provided around the cursor.
+- Ignore unrelated code, imports, or UI elements.
+- Return results as a JSON object:
+  {
+    "pattern": "<pattern_name_or_Unknown>",
+    "algorithm": "<algorithm_name_or_Unknown>"
+  }
+- If you cannot confidently identify a design pattern or algorithm, return "Unknown" for that field.
+- Focus on behavior and structure, not just variable or function names.
+
+**Code Snippet:**
+```python
+{code}
+```
+
+**Your Analysis (JSON only):**""".format(code=code_snippet)
+
+    try:
+        response = await get_gpt4o_response(prompt, temperature=0.3)
+        
+        if not response:
+            return {"pattern": "Unknown", "algorithm": "Unknown"}
+        
+        # Try to parse JSON from response
+        # Extract JSON from response (handle cases where GPT adds extra text)
+        response_clean = response.strip()
+        
+        # Try to find JSON object in response
+        json_start = response_clean.find('{')
+        json_end = response_clean.rfind('}') + 1
+        
+        if json_start >= 0 and json_end > json_start:
+            json_str = response_clean[json_start:json_end]
+            try:
+                result = json.loads(json_str)
+                # Ensure both fields exist
+                return {
+                    "pattern": result.get("pattern", "Unknown"),
+                    "algorithm": result.get("algorithm", "Unknown")
+                }
+            except json.JSONDecodeError:
+                logger.warning(f"Failed to parse JSON from GPT response: {json_str}")
+        
+        # Fallback: return Unknown if parsing fails
+        return {"pattern": "Unknown", "algorithm": "Unknown"}
+        
+    except Exception as e:
+        logger.error(f"Code pattern/algorithm analysis error: {e}", exc_info=True)
+        return {"pattern": "Unknown", "algorithm": "Unknown"}
+
+
+@app.post("/api/analyze/code-snippet")
+async def analyze_code_snippet(req: ChatRequest, user=Depends(auth.get_current_user)):
+    """
+    Analyze code snippet at cursor position for design patterns and algorithms.
+    
+    Request:
+    {
+        "code": "code snippet here",
+        "message": "optional context"
+    }
+    
+    Response:
+    {
+        "pattern": "Singleton | Factory | Observer | Unknown",
+        "algorithm": "QuickSort | BinarySearch | DFS | Unknown"
+    }
+    """
+    if not req.code:
+        raise HTTPException(400, "Code snippet is required")
+    
+    logger.info(f"Code snippet analysis requested by {user.get('username', 'unknown')}")
+    
+    result = await analyze_code_pattern_and_algorithm(req.code)
+    return result
+
 # ---------------- RUN ----------------
 if __name__ == "__main__":
-    uvicorn.run("backend.main:app", host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+    # Use app directly instead of string path to avoid module import issues
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
 

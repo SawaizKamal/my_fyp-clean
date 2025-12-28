@@ -1,0 +1,127 @@
+═══════════════════════════════════════════════════════════════
+  LOCAL SETUP - STEP BY STEP INSTRUCTIONS
+═══════════════════════════════════════════════════════════════
+
+STEP 1: Open PowerShell in the project directory
+─────────────────────────────────────────────────
+Location: C:\Users\S A Z\Desktop\pythin\my_fyp-clean
+
+
+STEP 2: Activate Virtual Environment & Install Backend Dependencies
+────────────────────────────────────────────────────────────────────
+Run these commands:
+
+    venv\Scripts\activate
+    cd backend
+    pip install -r requirements.txt
+
+⏱️ This will take 5-10 minutes (downloads Whisper model and dependencies)
+
+
+STEP 3: Create .env File for API Keys
+──────────────────────────────────────
+Create a file named `.env` in the `backend/` folder:
+
+    cd backend
+    # Create the file
+    echo "" > .env
+
+Then edit `.env` and add:
+
+    OPENAI_API_KEY=your_openai_key_here
+    YOUTUBE_API_KEY=your_youtube_key_here
+    SECRET_KEY=your_secret_key_here
+
+To generate a SECRET_KEY:
+    python -c "import secrets; print(secrets.token_hex(32))"
+
+
+STEP 4: Install Frontend Dependencies
+─────────────────────────────────────
+Open a NEW PowerShell window:
+
+    cd "C:\Users\S A Z\Desktop\pythin\my_fyp-clean\frontend"
+    npm install
+
+⏱️ This will take 2-3 minutes
+
+
+STEP 5: Start the Application
+──────────────────────────────
+
+TERMINAL 1 - Backend:
+    cd "C:\Users\S A Z\Desktop\pythin\my_fyp-clean"
+    venv\Scripts\activate
+    cd backend
+    python main.py
+
+TERMINAL 2 - Frontend:
+    cd "C:\Users\S A Z\Desktop\pythin\my_fyp-clean\frontend"
+    npm run dev
+
+
+STEP 6: Access the App
+──────────────────────
+Open browser: http://localhost:5173
+
+
+═══════════════════════════════════════════════════════════════
+  QUICK START (After Setup)
+═══════════════════════════════════════════════════════════════
+
+Option 1: Use START_LOCAL.bat
+    Double-click START_LOCAL.bat (opens both servers)
+
+Option 2: Manual Commands
+    Terminal 1: venv\Scripts\activate && cd backend && python main.py
+    Terminal 2: cd frontend && npm run dev
+
+
+═══════════════════════════════════════════════════════════════
+  TROUBLESHOOTING
+═══════════════════════════════════════════════════════════════
+
+❌ "Module not found" errors
+   → Make sure virtual environment is activated (you should see (venv) prefix)
+   → Run: pip install -r requirements.txt again
+
+❌ "Cannot find module" in frontend
+   → Run: cd frontend && npm install
+
+❌ Port 8000 already in use
+   → Close other applications using port 8000
+   → Or change PORT in backend/config.py
+
+❌ Port 5173 already in use
+   → Close other Vite dev servers
+   → Or change port in frontend/vite.config.js
+
+❌ "OPENAI_API_KEY environment variable is required"
+   → Create backend/.env file with your API keys
+   → Or set environment variable: $env:OPENAI_API_KEY="your_key"
+
+
+═══════════════════════════════════════════════════════════════
+  GET API KEYS
+═══════════════════════════════════════════════════════════════
+
+OpenAI API Key:
+   1. Go to: https://platform.openai.com/api-keys
+   2. Sign in or create account
+   3. Click "Create new secret key"
+   4. Copy the key
+
+YouTube API Key:
+   1. Go to: https://console.cloud.google.com
+   2. Create a project
+   3. Enable "YouTube Data API v3"
+   4. Create credentials (API Key)
+   5. Copy the key
+
+═══════════════════════════════════════════════════════════════
+
+
+
+
+
+

@@ -38,52 +38,57 @@ function ChatPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white">
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-8">
-          <h1 className="text-3xl font-bold text-purple-400">Code Assistant</h1>
+    <div className="min-h-screen bg-black text-white relative overflow-hidden">
+      {/* Animated background */}
+      <div className="absolute inset-0 grid-overlay opacity-20"></div>
+      <div className="absolute top-0 right-0 w-96 h-96 bg-[#ff00ff] opacity-5 blur-3xl animate-float"></div>
+      <div className="absolute bottom-0 left-0 w-96 h-96 bg-[#00ff41] opacity-5 blur-3xl animate-float" style={{ animationDelay: '1s' }}></div>
+      
+      <div className="container mx-auto px-4 py-8 relative z-10">
+        <div className="flex items-center justify-between mb-8 animate-slide-in-left">
+          <h1 className="text-4xl font-black neon-text-green font-mono uppercase tracking-wider animate-neon-glow">you-solution</h1>
           <div className="flex items-center gap-4">
             <button
               onClick={() => navigate('/upload-video')}
-              className="text-purple-400 hover:text-purple-300 px-4 py-2 rounded-lg hover:bg-gray-800 transition border border-purple-600"
+              className="glass border border-[#ff00ff] text-[#ff00ff] hover:bg-[#ff00ff] hover:text-black px-4 py-2 rounded-lg transition-all duration-300 cyber-button font-mono text-sm uppercase"
             >
-              🎬 Upload Video
+              > UPLOAD VIDEO
             </button>
             <button
               onClick={() => navigate('/search')}
-              className="text-gray-400 hover:text-white px-4 py-2 rounded-lg hover:bg-gray-800 transition"
+              className="glass border border-[#00ff41] text-[#00ff41] hover:bg-[#00ff41] hover:text-black px-4 py-2 rounded-lg transition-all duration-300 cyber-button font-mono text-sm uppercase"
             >
-              Search Videos
+              > SEARCH
             </button>
-            <span className="text-gray-400">Welcome, {user?.username}</span>
+            <span className="text-gray-300 font-mono text-sm">[ {user?.username} ]</span>
             <button
               onClick={() => navigate('/')}
-              className="text-gray-400 hover:text-white px-4 py-2 rounded-lg hover:bg-gray-800 transition"
+              className="glass border border-[#00ff41] text-[#00ff41] hover:bg-[#00ff41] hover:text-black px-4 py-2 rounded-lg transition-all duration-300 cyber-button font-mono text-sm uppercase"
             >
-              Home
+              > HOME
             </button>
             <button
               onClick={() => {
                 logout();
                 navigate('/');
               }}
-              className="text-gray-400 hover:text-white px-4 py-2 rounded-lg hover:bg-gray-800 transition"
+              className="glass border border-[#ff0040] text-[#ff0040] hover:bg-[#ff0040] hover:text-black px-4 py-2 rounded-lg transition-all duration-300 cyber-button font-mono text-sm uppercase"
             >
-              Logout
+              > LOGOUT
             </button>
           </div>
         </div>
 
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-4xl mx-auto animate-fade-in">
           {/* Info Banner */}
-          <div className="bg-purple-500 bg-opacity-10 border border-purple-500 rounded-xl p-4 mb-6">
-            <p className="text-purple-300 text-sm">
-              💡 <strong>New:</strong> Upload your own video and get AI-powered transcription with solution highlighting! 
+          <div className="glass-neon border-2 border-[#00ff41] rounded-xl p-4 mb-6 animate-slide-in-left" style={{ boxShadow: '0 0 20px rgba(0, 255, 65, 0.3)' }}>
+            <p className="text-[#00ff41] text-sm font-mono">
+              > <strong>NEW FEATURE:</strong> Upload your own video and get AI-powered transcription with solution highlighting! 
               <button
                 onClick={() => navigate('/upload-video')}
-                className="ml-2 underline hover:text-purple-200"
+                className="ml-2 underline hover:text-[#ff00ff] transition-colors font-bold"
               >
-                Try it now →
+                TRY IT NOW →
               </button>
             </p>
           </div>
@@ -91,27 +96,27 @@ function ChatPage() {
           <form onSubmit={handleSubmit} className="mb-8">
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Your Question or Error Message
+                <label className="block text-sm font-bold text-[#ff00ff] mb-2 font-mono uppercase">
+                  > YOUR QUESTION OR ERROR MESSAGE
                 </label>
                 <textarea
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   placeholder="Describe your coding problem or paste an error message..."
-                  className="w-full px-4 py-3 rounded-xl bg-[#1a1a1a] text-white placeholder-gray-400 border border-[#2a2a2a] focus:outline-none focus:ring-2 focus:ring-purple-600 focus:border-purple-600 min-h-[100px] transition"
+                  className="w-full px-4 py-3 rounded-xl bg-black/80 text-[#00ff41] placeholder-gray-500 border-2 border-[#ff00ff] focus:outline-none focus:ring-2 focus:ring-[#ff00ff] focus:border-[#ff00ff] min-h-[100px] transition-all duration-300 font-mono text-sm focus:shadow-[0_0_20px_rgba(255,0,255,0.3)]"
                   rows="4"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Code (Optional)
+                <label className="block text-sm font-bold text-[#00ff41] mb-2 font-mono uppercase">
+                  > CODE (OPTIONAL)
                 </label>
                 <textarea
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
                   placeholder="Paste your code here for analysis..."
-                  className="w-full px-4 py-3 rounded-xl bg-[#1a1a1a] text-white placeholder-gray-400 border border-[#2a2a2a] focus:outline-none focus:ring-2 focus:ring-purple-600 focus:border-purple-600 font-mono text-sm min-h-[200px] transition"
+                  className="w-full px-4 py-3 rounded-xl bg-black/80 text-[#00ff41] placeholder-gray-500 border-2 border-[#00ff41] focus:outline-none focus:ring-2 focus:ring-[#00ff41] focus:border-[#00ff41] font-mono text-sm min-h-[200px] transition-all duration-300 focus:shadow-[0_0_20px_rgba(0,255,65,0.3)]"
                   rows="10"
                 />
               </div>
@@ -119,37 +124,41 @@ function ChatPage() {
               <button
                 type="submit"
                 disabled={loading || !message.trim()}
-                className="w-full px-8 py-4 bg-purple-600 hover:bg-purple-700 rounded-xl font-semibold transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full px-8 py-5 bg-gradient-to-r from-[#ff0040] via-[#ff00ff] to-[#00ff41] hover:from-[#ff00ff] hover:via-[#00ff41] hover:to-[#ff0040] rounded-xl font-black transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed cyber-button font-mono text-lg uppercase tracking-wider transform hover:scale-105 disabled:transform-none"
+                style={{ boxShadow: '0 0 30px rgba(255, 0, 64, 0.5), 0 0 60px rgba(255, 0, 255, 0.3)' }}
               >
-                {loading ? 'Analyzing...' : 'Get Help'}
+                {loading ? '> ANALYZING...' : '> GET HELP'}
               </button>
             </div>
           </form>
 
           {error && (
-            <div className="bg-red-500 bg-opacity-20 border border-red-500 text-red-300 px-6 py-4 rounded-xl mb-8">
-              {error}
+            <div className="glass border-2 border-[#ff0040] text-[#ff0040] px-6 py-4 rounded-xl mb-8 animate-slide-in-left font-mono" style={{ boxShadow: '0 0 20px rgba(255, 0, 64, 0.5)' }}>
+              <div className="flex items-center gap-2 font-bold">
+                <span>> ERROR:</span>
+                <span className="font-normal">{error}</span>
+              </div>
             </div>
           )}
 
           {response && (
-            <div className="space-y-6">
+            <div className="space-y-6 animate-fade-in">
               {/* PRIMARY Pattern Badge (Prominent Display) */}
               <div className="flex items-center gap-4">
-                <div className="bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-3 rounded-lg shadow-lg">
-                  <span className="font-bold text-lg">🧠 PRIMARY: {response.primary_pattern || response.pattern_name}</span>
+                <div className="glass-neon border-2 border-[#00ff41] px-6 py-3 rounded-lg shadow-[0_0_30px_rgba(0,255,65,0.5)]">
+                  <span className="font-black text-lg font-mono neon-text-green uppercase">🧠 PRIMARY: {response.primary_pattern || response.pattern_name}</span>
                 </div>
-                <div className="bg-gray-800 px-4 py-2 rounded-lg">
-                  <span className="text-sm">Confidence: {response.confidence_score}%</span>
+                <div className="glass border border-[#ff00ff] px-4 py-2 rounded-lg">
+                  <span className="text-sm font-mono font-bold text-[#ff00ff]">CONFIDENCE: {response.confidence_score}%</span>
                 </div>
               </div>
 
               {/* Secondary Issues (if any) */}
               {response.secondary_issues && response.secondary_issues.length > 0 && (
                 <div className="flex flex-wrap gap-2">
-                  <span className="text-gray-400 text-sm">Secondary Issues:</span>
+                  <span className="text-gray-400 text-sm font-mono">> SECONDARY ISSUES:</span>
                   {response.secondary_issues.map((issue, index) => (
-                    <span key={index} className="bg-yellow-600 bg-opacity-20 border border-yellow-600 px-3 py-1 rounded-full text-xs text-yellow-300">
+                    <span key={index} className="glass border border-[#ff00ff] px-3 py-1 rounded-full text-xs text-[#ff00ff] font-mono font-bold">
                       ⚠️ {issue}
                     </span>
                   ))}
@@ -157,36 +166,36 @@ function ChatPage() {
               )}
 
               {/* Learning Intent */}
-              <div className="bg-blue-500 bg-opacity-10 border border-blue-500 rounded-xl p-4">
-                <p className="text-blue-300">
-                  <strong>🎯 Learning Goal:</strong> {response.learning_intent}
+              <div className="glass border-2 border-[#00ff41] rounded-xl p-4" style={{ boxShadow: '0 0 20px rgba(0, 255, 65, 0.3)' }}>
+                <p className="text-[#00ff41] font-mono">
+                  <strong className="font-black">> 🎯 LEARNING GOAL:</strong> <span className="font-normal">{response.learning_intent}</span>
                 </p>
               </div>
 
               {/* Pattern Explanation */}
-              <div className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-6">
-                <h2 className="text-xl font-bold text-purple-400 mb-4">💡 Why This Pattern Fails</h2>
+              <div className="glass-neon rounded-xl p-6 border-2">
+                <h2 className="text-xl font-black neon-text-green mb-4 font-mono uppercase tracking-wider">💡 WHY THIS PATTERN FAILS</h2>
                 <div className="prose prose-invert max-w-none">
-                  <p className="text-gray-300 whitespace-pre-wrap">{response.primary_pattern_explanation || response.pattern_explanation}</p>
+                  <p className="text-gray-300 whitespace-pre-wrap font-mono text-sm leading-relaxed">{response.primary_pattern_explanation || response.pattern_explanation}</p>
                 </div>
               </div>
 
               {/* Debugging Insights */}
               {response.debugging_insight && (
-                <div className="bg-red-500 bg-opacity-10 border border-red-500 rounded-xl p-6">
-                  <h2 className="text-xl font-bold text-red-400 mb-4">🐛 Debugging Insights</h2>
+                <div className="glass border-2 border-[#ff0040] rounded-xl p-6" style={{ boxShadow: '0 0 20px rgba(255, 0, 64, 0.3)' }}>
+                  <h2 className="text-xl font-black neon-text-red mb-4 font-mono uppercase tracking-wider">🐛 DEBUGGING INSIGHTS</h2>
                   <div className="space-y-4">
                     <div>
-                      <h3 className="font-semibold text-red-300 mb-2">🔍 Root Cause:</h3>
-                      <p className="text-gray-300">{response.debugging_insight.root_cause}</p>
+                      <h3 className="font-bold text-[#ff0040] mb-2 font-mono">> 🔍 ROOT CAUSE:</h3>
+                      <p className="text-gray-300 font-mono text-sm">{response.debugging_insight.root_cause}</p>
                     </div>
                     <div>
-                      <h3 className="font-semibold text-yellow-300 mb-2">❌ Faulty Assumption:</h3>
-                      <p className="text-gray-300">{response.debugging_insight.faulty_assumption}</p>
+                      <h3 className="font-bold text-[#ff00ff] mb-2 font-mono">> ❌ FAULTY ASSUMPTION:</h3>
+                      <p className="text-gray-300 font-mono text-sm">{response.debugging_insight.faulty_assumption}</p>
                     </div>
                     <div>
-                      <h3 className="font-semibold text-green-300 mb-2">✅ Correct Flow:</h3>
-                      <p className="text-gray-300 whitespace-pre-wrap">{response.debugging_insight.correct_flow}</p>
+                      <h3 className="font-bold text-[#00ff41] mb-2 font-mono">> ✅ CORRECT FLOW:</h3>
+                      <p className="text-gray-300 whitespace-pre-wrap font-mono text-sm">{response.debugging_insight.correct_flow}</p>
                     </div>
                   </div>
                 </div>
@@ -194,18 +203,18 @@ function ChatPage() {
 
               {/* Corrected Code */}
               {response.corrected_code && (
-                <div className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-6">
+                <div className="glass-neon rounded-xl p-6 border-2">
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-xl font-bold text-purple-400">Corrected Code</h2>
+                    <h2 className="text-xl font-black neon-text-green font-mono uppercase tracking-wider">CORRECTED CODE</h2>
                     <button
                       onClick={() => copyToClipboard(response.corrected_code)}
-                      className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm transition"
+                      className="px-4 py-2 glass border border-[#00ff41] text-[#00ff41] hover:bg-[#00ff41] hover:text-black rounded-lg text-sm transition-all duration-300 cyber-button font-mono font-bold uppercase"
                     >
-                      Copy Code
+                      > COPY CODE
                     </button>
                   </div>
-                  <pre className="bg-[#0a0a0a] border border-[#2a2a2a] p-4 rounded-lg overflow-x-auto">
-                    <code className="text-sm text-gray-100">{response.corrected_code}</code>
+                  <pre className="bg-black/80 border-2 border-[#00ff41] p-4 rounded-lg overflow-x-auto font-mono" style={{ boxShadow: '0 0 20px rgba(0, 255, 65, 0.3)' }}>
+                    <code className="text-sm text-[#00ff41]">{response.corrected_code}</code>
                   </pre>
                 </div>
               )}
@@ -451,8 +460,8 @@ function ChatPage() {
           )}
 
           {!response && !loading && !error && (
-            <div className="text-center text-gray-500 text-xl mt-20">
-              Enter your coding question or paste code with errors to get help
+            <div className="text-center text-gray-400 text-xl mt-20 font-mono animate-fade-in">
+              > ENTER YOUR CODING QUESTION OR PASTE CODE WITH ERRORS TO GET HELP
             </div>
           )}
         </div>

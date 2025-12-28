@@ -15,6 +15,9 @@ function VideoPlayerPage() {
   const [currentTime, setCurrentTime] = useState(0);
   const [highlightedSegment, setHighlightedSegment] = useState(null);
   const [youtubeApiReady, setYoutubeApiReady] = useState(false);
+  const [videoInitialized, setVideoInitialized] = useState(false);
+  const [videoSrc, setVideoSrc] = useState('');
+  const isSeekingRef = useRef(false);
 
   // Initialize YouTube IFrame API
   useEffect(() => {
@@ -110,20 +113,43 @@ function VideoPlayerPage() {
         setError(null);
 
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/7b7349a8-4aec-40c0-88c1-85a8567508ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VideoPlayerPage.jsx:25',message:'Before API call',data:{videoId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FRONTEND'})}).catch(()=>{});
+        if (process.env.NODE_ENV === 'development') {
+          fetch('http://127.0.0.1:7242/ingest/7b7349a8-4aec-40c0-88c1-85a8567508ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VideoPlayerPage.jsx:25',message:'Before API call',data:{videoId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FRONTEND'})}).catch(()=>{});
+        }
         // #endregion
 
         // Call transcription API
         const response = await api.post(`/video/transcribe/${videoId}`);
         
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/7b7349a8-4aec-40c0-88c1-85a8567508ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VideoPlayerPage.jsx:30',message:'API call succeeded',data:{hasData:!!response.data},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FRONTEND'})}).catch(()=>{});
+        if (process.env.NODE_ENV === 'development') {
+          fetch('http://127.0.0.1:7242/ingest/7b7349a8-4aec-40c0-88c1-85a8567508ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VideoPlayerPage.jsx:30',message:'API call succeeded',data:{hasData:!!response.data},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FRONTEND'})}).catch(()=>{});
+        }
         // #endregion
         
         setTranscript(response.data);
+        setVideoInitialized(false); // Reset when new transcript loads
+        
+        // Set stable video src when transcript loads
+        const transcriptData = response.data;
+        if (transcriptData && transcriptData.video_id) {
+          const token = localStorage.getItem('token');
+          // Construct video URL using video_id (not video_url from backend)
+          // Use GET /api/video/{video_id} endpoint for playback
+          const finalVideoUrl = `${api.defaults.baseURL}/video/${transcriptData.video_id}${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+          console.log('=== Video URL Debug ===');
+          console.log('Video ID:', transcriptData.video_id);
+          console.log('Final video src:', finalVideoUrl);
+          console.log('======================');
+          setVideoSrc(finalVideoUrl);
+        } else {
+          setVideoSrc('');
+        }
       } catch (err) {
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/7b7349a8-4aec-40c0-88c1-85a8567508ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VideoPlayerPage.jsx:33',message:'API call failed',data:{error:err.message,status:err.response?.status,detail:err.response?.data?.detail},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FRONTEND'})}).catch(()=>{});
+        if (process.env.NODE_ENV === 'development') {
+          fetch('http://127.0.0.1:7242/ingest/7b7349a8-4aec-40c0-88c1-85a8567508ca',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VideoPlayerPage.jsx:33',message:'API call failed',data:{error:err.message,status:err.response?.status,detail:err.response?.data?.detail},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FRONTEND'})}).catch(()=>{});
+        }
         // #endregion
         setError(err.response?.data?.detail || 'Failed to load video transcription. Please try again.');
         console.error(err);
@@ -149,12 +175,15 @@ function VideoPlayerPage() {
   }, [transcript]);
 
   const jumpToTimestamp = (startTime) => {
-    if (transcript.video_unavailable && transcript.youtube_embed_url) {
+    console.log('Jumping to timestamp:', startTime);
+    
+    if (transcript?.video_unavailable && transcript.youtube_embed_url) {
       // Use YouTube IFrame API if available for better control
       if (youtubePlayerRef.current && youtubeApiReady) {
         try {
+          // Seek without autoplay - let user control playback
           youtubePlayerRef.current.seekTo(startTime, true);
-          youtubePlayerRef.current.playVideo();
+          // Don't auto-play - just seek
         } catch (e) {
           console.error('Error seeking with YouTube API:', e);
           // Fallback to iframe src method
@@ -162,7 +191,8 @@ function VideoPlayerPage() {
           if (iframe) {
             const baseUrl = transcript.youtube_embed_url.split('?')[0];
             const timestamp = Math.floor(startTime);
-            iframe.src = `${baseUrl}?start=${timestamp}&autoplay=1&enablejsapi=1`;
+            // Remove autoplay from fallback too
+            iframe.src = `${baseUrl}?start=${timestamp}&enablejsapi=1`;
           }
         }
       } else {
@@ -171,13 +201,47 @@ function VideoPlayerPage() {
         if (iframe) {
           const baseUrl = transcript.youtube_embed_url.split('?')[0];
           const timestamp = Math.floor(startTime);
-          const newUrl = `${baseUrl}?start=${timestamp}&autoplay=1&enablejsapi=1`;
+          // Remove autoplay
+          const newUrl = `${baseUrl}?start=${timestamp}&enablejsapi=1`;
           iframe.src = newUrl;
         }
       }
     } else if (videoRef.current) {
-      videoRef.current.currentTime = startTime;
-      videoRef.current.play();
+      // For regular video element, seek using standard HTML5 API
+      const video = videoRef.current;
+      
+      // Check if video is ready to seek
+      if (video.readyState < 2) {
+        // Video metadata not loaded yet, wait for it
+        const seekWhenReady = () => {
+          video.currentTime = startTime;
+          setCurrentTime(startTime);
+        };
+        video.addEventListener('loadedmetadata', seekWhenReady, { once: true });
+        return;
+      }
+      
+      // Set seeking flag to prevent interference
+      isSeekingRef.current = true;
+      
+      // Direct seek - this is the standard HTML5 video API
+      // Setting currentTime directly does NOT reload the video
+      try {
+        video.currentTime = startTime;
+        
+        // Update state immediately for UI feedback
+        setCurrentTime(startTime);
+        
+        // Clear seeking flag after seek completes
+        const handleSeeked = () => {
+          isSeekingRef.current = false;
+          setCurrentTime(video.currentTime);
+        };
+        video.addEventListener('seeked', handleSeeked, { once: true });
+      } catch (e) {
+        console.error('Error seeking video:', e);
+        isSeekingRef.current = false;
+      }
     }
   };
 
@@ -188,7 +252,19 @@ function VideoPlayerPage() {
   };
 
   const isSolutionSegment = (index) => {
-    return transcript?.solution_segments?.includes(index) || false;
+    if (!transcript?.solution_segments) return false;
+    // Handle both array of numbers and array of objects
+    if (Array.isArray(transcript.solution_segments)) {
+      // Check if it's an array of numbers (indices)
+      if (transcript.solution_segments.length > 0 && typeof transcript.solution_segments[0] === 'number') {
+        return transcript.solution_segments.includes(index);
+      }
+      // Check if it's an array of objects with index property
+      if (transcript.solution_segments.length > 0 && typeof transcript.solution_segments[0] === 'object') {
+        return transcript.solution_segments.some(seg => seg.index === index || seg === index);
+      }
+    }
+    return false;
   };
 
   const isCurrentSegment = (segment) => {
@@ -229,11 +305,15 @@ function VideoPlayerPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0a0a0a] text-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-purple-600 mx-auto mb-4"></div>
-          <p className="text-gray-400">Transcribing video and identifying solutions...</p>
-          <p className="text-sm text-gray-500 mt-2">This may take a minute</p>
+      <div className="min-h-screen bg-black text-white flex items-center justify-center relative overflow-hidden">
+        <div className="absolute inset-0 grid-overlay opacity-20"></div>
+        <div className="text-center relative z-10">
+          <div className="relative">
+            <div className="animate-spin rounded-full h-20 w-20 border-4 border-[#00ff41] border-t-transparent mx-auto mb-4 animate-neon-pulse"></div>
+            <div className="absolute inset-0 rounded-full border-4 border-[#ff00ff] border-t-transparent animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }}></div>
+          </div>
+          <p className="text-[#00ff41] font-mono text-lg animate-neon-glow">> TRANSCRIBING VIDEO AND IDENTIFYING SOLUTIONS...</p>
+          <p className="text-sm text-gray-400 mt-2 font-mono">This may take a minute</p>
         </div>
       </div>
     );
@@ -241,24 +321,25 @@ function VideoPlayerPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-[#0a0a0a] text-white">
-        <div className="container mx-auto px-4 py-8">
+      <div className="min-h-screen bg-black text-white relative overflow-hidden">
+        <div className="absolute inset-0 grid-overlay opacity-20"></div>
+        <div className="container mx-auto px-4 py-8 relative z-10">
           <button
             onClick={() => navigate('/chat')}
-            className="text-gray-400 hover:text-white mb-6 flex items-center gap-2 px-4 py-2 rounded-lg hover:bg-gray-800 transition"
+            className="glass border border-[#00ff41] text-[#00ff41] hover:bg-[#00ff41] hover:text-black mb-6 flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-300 cyber-button font-mono text-sm uppercase"
           >
-            ← Back to Chat
+            < BACK TO CHAT
           </button>
-          <div className="bg-red-500 bg-opacity-20 border border-red-500 rounded-xl p-8 max-w-2xl mx-auto">
-            <h2 className="text-2xl font-bold text-red-400 mb-4 flex items-center gap-2">
-              <span>⚠️</span> Error Loading Transcription
+          <div className="glass border-2 border-[#ff0040] rounded-xl p-8 max-w-2xl mx-auto animate-fade-in" style={{ boxShadow: '0 0 30px rgba(255, 0, 64, 0.5)' }}>
+            <h2 className="text-3xl font-black neon-text-red mb-4 flex items-center gap-2 font-mono uppercase tracking-wider">
+              <span>⚠️</span> ERROR LOADING TRANSCRIPTION
             </h2>
-            <p className="text-gray-300 mb-4">{error}</p>
-            <div className="bg-yellow-500 bg-opacity-10 border border-yellow-500 rounded-lg p-4 mb-4">
-              <p className="text-yellow-300 text-sm">
-                <strong>Possible solutions:</strong>
+            <p className="text-gray-300 mb-4 font-mono">> {error}</p>
+            <div className="glass border border-[#ff00ff] rounded-lg p-4 mb-4">
+              <p className="text-[#ff00ff] text-sm font-mono font-bold">
+                > POSSIBLE SOLUTIONS:
               </p>
-              <ul className="list-disc list-inside text-yellow-200 text-sm mt-2 space-y-1">
+              <ul className="list-disc list-inside text-gray-300 text-sm mt-2 space-y-1 font-mono">
                 <li>Try again in a few moments (YouTube may be temporarily blocking requests)</li>
                 <li>Check if the video has captions/transcripts enabled</li>
                 <li>Try a different video</li>
@@ -267,9 +348,9 @@ function VideoPlayerPage() {
             </div>
             <button
               onClick={() => window.location.reload()}
-              className="px-6 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold transition"
+              className="px-6 py-3 glass border-2 border-[#00ff41] text-[#00ff41] hover:bg-[#00ff41] hover:text-black rounded-lg font-black transition-all duration-300 cyber-button font-mono uppercase tracking-wider"
             >
-              Retry
+              > RETRY
             </button>
           </div>
         </div>
@@ -282,23 +363,27 @@ function VideoPlayerPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white">
-      <div className="container mx-auto px-4 py-8">
+    <div className="min-h-screen bg-black text-white relative overflow-hidden">
+      {/* Animated background */}
+      <div className="absolute inset-0 grid-overlay opacity-20"></div>
+      <div className="absolute top-0 right-0 w-96 h-96 bg-[#ff00ff] opacity-5 blur-3xl animate-float"></div>
+      
+      <div className="container mx-auto px-4 py-8 relative z-10">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 animate-slide-in-left">
           <button
             onClick={() => navigate('/chat')}
-            className="text-gray-400 hover:text-white px-4 py-2 rounded-lg hover:bg-gray-800 transition"
+            className="glass border border-[#00ff41] text-[#00ff41] hover:bg-[#00ff41] hover:text-black px-4 py-2 rounded-lg transition-all duration-300 cyber-button font-mono text-sm uppercase"
           >
-            ← Back to Chat
+            < BACK TO CHAT
           </button>
           <div className="flex items-center gap-4">
-            <span className="text-gray-400">Welcome, {user?.username}</span>
+            <span className="text-gray-300 font-mono text-sm">[ {user?.username} ]</span>
             <button
               onClick={() => navigate('/')}
-              className="text-gray-400 hover:text-white px-4 py-2 rounded-lg hover:bg-gray-800 transition"
+              className="glass border border-[#ff00ff] text-[#ff00ff] hover:bg-[#ff00ff] hover:text-black px-4 py-2 rounded-lg transition-all duration-300 cyber-button font-mono text-sm uppercase"
             >
-              Home
+              > HOME
             </button>
           </div>
         </div>
@@ -343,11 +428,69 @@ function VideoPlayerPage() {
                   ref={videoRef}
                   controls
                   className="w-full"
-                  src={transcript.video_url || `/api/video/stream/${videoId}`}
-                  onLoadedMetadata={() => {
-                    if (videoRef.current) {
-                      videoRef.current.currentTime = 0;
+                  preload="metadata"
+                  src={videoSrc}
+                  onLoadedMetadata={(e) => {
+                    // Only initialize once when video first loads
+                    // Don't reset if we're currently seeking
+                    if (videoRef.current && !videoInitialized && !isSeekingRef.current) {
+                      // Set to 0 only on very first load
+                      if (videoRef.current.currentTime === 0 || videoRef.current.readyState < 2) {
+                        videoRef.current.currentTime = 0;
+                      }
+                      setVideoInitialized(true);
+                      // Ensure video doesn't autoplay
+                      if (!videoRef.current.paused) {
+                        videoRef.current.pause();
+                      }
                     }
+                  }}
+                  onSeeking={(e) => {
+                    // Prevent any interference during seek
+                    console.log('Video seeking to:', e.target.currentTime);
+                    // Make sure we don't reset to 0 during seek
+                    if (e.target.currentTime === 0 && isSeekingRef.current) {
+                      // If we're seeking and it resets to 0, something went wrong
+                      console.warn('Video reset to 0 during seek - this should not happen');
+                    }
+                  }}
+                  onSeeked={(e) => {
+                    // Update current time after seek completes
+                    const newTime = e.target.currentTime;
+                    setCurrentTime(newTime);
+                    console.log('Video seeked to:', newTime);
+                    // Clear seeking flag after seek completes
+                    isSeekingRef.current = false;
+                  }}
+                  onPlay={() => {
+                    // Optional: Track when video plays for debugging
+                    console.log('Video started playing');
+                  }}
+                  onPause={() => {
+                    // Optional: Track when video pauses for debugging
+                    console.log('Video paused');
+                  }}
+                  onError={(e) => {
+                    console.error('Video error:', e);
+                    const video = e.target;
+                    console.error('Video error details:', {
+                      error: video.error,
+                      errorCode: video.error?.code,
+                      errorMessage: video.error?.message,
+                      networkState: video.networkState,
+                      readyState: video.readyState,
+                      src: video.src,
+                      currentSrc: video.currentSrc
+                    });
+                    if (video.error) {
+                      setError(`Video playback error: ${video.error.message || 'Unknown error'}`);
+                    }
+                  }}
+                  onLoadStart={() => {
+                    console.log('Video load started, src:', videoSrc);
+                  }}
+                  onCanPlay={() => {
+                    console.log('Video can play');
                   }}
                 >
                   Your browser does not support the video tag.
@@ -356,18 +499,18 @@ function VideoPlayerPage() {
             )}
 
             {/* Video Info */}
-            <div className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-4 mb-4">
+            <div className="glass-neon rounded-xl p-4 mb-4 border-2">
               <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-400">Duration: {formatTime(transcript.duration)}</p>
-                  <p className="text-sm text-gray-400">Language: {transcript.language}</p>
+                <div className="font-mono text-sm space-y-1">
+                  <p className="text-[#00ff41]">> DURATION: <span className="text-white">{formatTime(transcript.duration)}</span></p>
+                  <p className="text-[#00ff41]">> LANGUAGE: <span className="text-white">{transcript.language}</span></p>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm text-purple-400">
-                    ⭐ {transcript.solution_segments?.length || 0} Solution Segments
+                  <p className="text-sm font-mono font-bold neon-text-pink">
+                    ⭐ {transcript.solution_segments?.length || 0} SOLUTION SEGMENTS
                   </p>
-                  <p className="text-xs text-gray-500">
-                    {transcript.total_segments} Total Segments
+                  <p className="text-xs text-gray-400 font-mono">
+                    {transcript.total_segments} TOTAL SEGMENTS
                   </p>
                 </div>
               </div>
@@ -376,10 +519,10 @@ function VideoPlayerPage() {
 
           {/* Transcript Sidebar - Takes 1/3 of the width */}
           <div className="lg:col-span-1">
-            <div className="bg-[#111111] border border-[#2a2a2a] rounded-xl p-4 h-[calc(100vh-200px)] flex flex-col">
-              <h2 className="text-xl font-bold text-purple-400 mb-4 flex items-center gap-2">
-                📜 Transcript
-                <span className="text-xs text-gray-400 font-normal">
+            <div className="glass-neon rounded-xl p-4 h-[calc(100vh-200px)] flex flex-col border-2">
+              <h2 className="text-xl font-black neon-text-green mb-4 flex items-center gap-2 font-mono uppercase tracking-wider">
+                > TRANSCRIPT
+                <span className="text-xs text-gray-400 font-normal normal-case">
                   ({transcript.segments?.length || 0} segments)
                 </span>
               </h2>
@@ -393,18 +536,32 @@ function VideoPlayerPage() {
                     <div
                       key={index}
                       data-segment-index={index}
-                      onClick={() => jumpToTimestamp(segment.start)}
-                      className={`
-                        p-3 rounded-lg cursor-pointer transition-all duration-200
-                        ${isCurrent 
-                          ? 'bg-purple-600 bg-opacity-30 border-2 border-purple-500 shadow-lg shadow-purple-500/50' 
-                          : 'bg-[#1a1a1a] border border-[#2a2a2a] hover:bg-[#252525] hover:border-purple-600/50'
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (segment && segment.start !== undefined) {
+                          jumpToTimestamp(segment.start);
                         }
-                        ${isSolution ? 'ring-2 ring-yellow-500 ring-opacity-70 bg-yellow-500 bg-opacity-10' : ''}
-                        ${isSolution && isCurrent ? 'ring-4 ring-yellow-400 ring-opacity-80' : ''}
+                      }}
+                      onMouseDown={(e) => {
+                        // Prevent text selection on click
+                        if (e.detail > 1) {
+                          e.preventDefault();
+                        }
+                      }}
+                      className={`
+                        p-3 rounded-lg cursor-pointer transition-all duration-300 select-none font-mono text-sm
+                        ${isCurrent 
+                          ? 'glass-neon border-2 border-[#00ff41] shadow-[0_0_20px_rgba(0,255,65,0.5)]' 
+                          : 'glass border border-[#ff00ff] hover:border-[#00ff41] hover:shadow-[0_0_10px_rgba(0,255,65,0.3)]'
+                        }
+                        ${isSolution ? 'ring-2 ring-[#ff00ff] ring-opacity-70 bg-[#ff00ff] bg-opacity-10' : ''}
+                        ${isSolution && isCurrent ? 'ring-4 ring-[#ff00ff] ring-opacity-90 shadow-[0_0_30px_rgba(255,0,255,0.6)]' : ''}
                       `}
                       style={{
                         transform: isCurrent ? 'scale(1.02)' : 'scale(1)',
+                        userSelect: 'none',
+                        WebkitUserSelect: 'none',
                       }}
                     >
                       <div className="flex items-start justify-between gap-2 mb-1">
@@ -413,20 +570,20 @@ function VideoPlayerPage() {
                             e.stopPropagation();
                             jumpToTimestamp(segment.start);
                           }}
-                          className="text-xs font-mono text-purple-400 font-semibold hover:text-purple-300 hover:underline transition-colors"
+                          className="text-xs font-mono text-[#00ff41] font-bold hover:text-[#00ff41] hover:underline transition-colors neon-text-green"
                         >
-                          {segment.timestamp}
+                          > {segment.timestamp}
                         </button>
                         {isSolution && (
-                          <span className="text-xs bg-yellow-500 bg-opacity-30 text-yellow-200 px-2 py-0.5 rounded font-semibold animate-pulse">
-                            ⭐ Solution
+                          <span className="text-xs glass border border-[#ff00ff] text-[#ff00ff] px-2 py-0.5 rounded font-bold animate-neon-pulse font-mono">
+                            ⭐ SOLUTION
                           </span>
                         )}
                       </div>
                       <p 
-                        className={`text-sm leading-relaxed ${isSolution ? 'text-yellow-100 font-semibold' : 'text-gray-300'}`}
+                        className={`text-sm leading-relaxed ${isSolution ? 'text-[#ff00ff] font-bold neon-text-pink' : 'text-gray-300'}`}
                         style={{
-                          fontWeight: isSolution ? 600 : 400,
+                          fontWeight: isSolution ? 700 : 400,
                         }}
                       >
                         {segment.text}
@@ -438,40 +595,60 @@ function VideoPlayerPage() {
 
               {/* Solution Segments Summary */}
               {transcript.solution_segments && transcript.solution_segments.length > 0 && (
-                <div className="mt-4 pt-4 border-t border-[#2a2a2a]">
-                  <p className="text-xs text-gray-400 mb-2">
-                    💡 Click on highlighted segments (⭐) to jump to solution parts
+                <div className="mt-4 pt-4 border-t border-[#ff00ff]">
+                  <p className="text-xs text-gray-400 mb-3 font-mono">
+                    > Click highlighted segments (⭐) to jump to solutions
                   </p>
                   <div className="space-y-2">
                     <button
-                      onClick={() => {
-                        const firstSolution = transcript.solution_segments[0];
-                        if (firstSolution < transcript.segments.length) {
-                          jumpToTimestamp(transcript.segments[firstSolution].start);
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const firstSolutionIndex = transcript.solution_segments[0];
+                        if (transcript.segments && firstSolutionIndex !== undefined && firstSolutionIndex < transcript.segments.length) {
+                          const segment = transcript.segments[firstSolutionIndex];
+                          if (segment && segment.start !== undefined) {
+                            jumpToTimestamp(segment.start);
+                            // Also scroll to the segment in the transcript list
+                            setTimeout(() => {
+                              const element = document.querySelector(`[data-segment-index="${firstSolutionIndex}"]`);
+                              if (element) {
+                                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              }
+                            }, 100);
+                          }
                         }
                       }}
-                      className="w-full px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded-lg text-sm font-semibold transition transform hover:scale-105"
+                      className="w-full px-4 py-2 glass border border-[#ff00ff] text-[#ff00ff] hover:bg-[#ff00ff] hover:text-black rounded-lg text-sm font-bold transition-all duration-300 transform hover:scale-105 active:scale-95 cyber-button font-mono uppercase"
                     >
-                      ⭐ Jump to First Solution
+                      ⭐ JUMP TO FIRST SOLUTION
                     </button>
                     {transcript.solution_segments.length > 1 && (
                       <button
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
                           // Scroll to first solution segment in the list
                           const firstSolutionIndex = transcript.solution_segments[0];
                           const element = document.querySelector(`[data-segment-index="${firstSolutionIndex}"]`);
                           if (element) {
                             element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            // Highlight it briefly
+                            element.style.transition = 'all 0.3s';
+                            element.style.transform = 'scale(1.05)';
+                            setTimeout(() => {
+                              element.style.transform = '';
+                            }, 500);
                           }
                         }}
-                        className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm font-semibold transition transform hover:scale-105"
+                        className="w-full px-4 py-2 glass border border-[#00ff41] text-[#00ff41] hover:bg-[#00ff41] hover:text-black rounded-lg text-sm font-bold transition-all duration-300 transform hover:scale-105 active:scale-95 cyber-button font-mono uppercase"
                       >
-                        📍 Scroll to Solutions
+                        📍 SCROLL TO SOLUTIONS
                       </button>
                     )}
                   </div>
-                  <p className="text-xs text-yellow-400 mt-2 text-center">
-                    {transcript.solution_segments.length} solution segment{transcript.solution_segments.length !== 1 ? 's' : ''} found
+                  <p className="text-xs neon-text-pink mt-3 text-center font-mono font-bold">
+                    {transcript.solution_segments.length} SOLUTION SEGMENT{transcript.solution_segments.length !== 1 ? 'S' : ''} FOUND
                   </p>
                 </div>
               )}
