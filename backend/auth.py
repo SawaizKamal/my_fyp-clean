@@ -17,7 +17,7 @@ if not locals().get("SECRET_KEY"):
     SECRET_KEY = "CHANGE_ME_IN_PRODUCTION_SECRET_KEY"
 
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 120  # Increased to 2 hours for better user experience
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 

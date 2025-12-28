@@ -268,7 +268,9 @@ Your task is to identify the SPECIFIC CATEGORY of coding problem from the code a
    - Be SPECIFIC, not generic
 2. Return ONLY the exact pattern key from the list above (e.g., "bubble_sort" not "sorting_algorithm_issue")
 3. On the next line, return a confidence score (0-100)
-4. Format: pattern_key\\nconfidence_score
+4. Format your response as:
+   pattern_key
+   confidence_score
 
 **Examples:**
 If code shows nested loops comparing adjacent elements and swapping → "bubble_sort"

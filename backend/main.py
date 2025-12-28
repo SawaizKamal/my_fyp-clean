@@ -16,7 +16,7 @@ import database
 # ---------------- LOCAL MODULES ----------------
 import video_compile, youtube_download
 import auth
-from config import OPENAI_API_KEY, YOUTUBE_API_KEY, ALLOWED_ORIGINS
+from config import OPENAI_API_KEY, YOUTUBE_API_KEY, ALLOWED_ORIGINS, WHISPER_MODEL_SIZE
 import pattern_detector
 import knowledge_search
 import debug_analyzer
@@ -54,20 +54,23 @@ except ImportError:
 # Cache Whisper model to avoid reloading on each request
 _whisper_model_cache = None
 
-def get_whisper_model(model_size: str = "base"):
+def get_whisper_model(model_size: Optional[str] = None):
     """Get cached Whisper model or load it if not cached
     
     Args:
-        model_size: Model size to use. Options: "tiny", "base", "small", "medium", "large"
-                    Default: "base" for balance between speed and accuracy
+        model_size: Model size to use. Options: "tiny" (~39MB RAM), "base" (~1GB RAM), 
+                    "small" (~2GB RAM), "medium" (~5GB RAM), "large" (~10GB RAM)
+                    If None, uses WHISPER_MODEL_SIZE from config (auto-detects free tier)
     """
     global _whisper_model_cache
+    if model_size is None:
+        model_size = WHISPER_MODEL_SIZE
     cache_key = model_size
     if _whisper_model_cache is None or not hasattr(_whisper_model_cache, '_model_size') or _whisper_model_cache._model_size != model_size:
-        logger.info(f"Loading Whisper model '{model_size}' (first time)...")
+        logger.info(f"Loading Whisper model '{model_size}' (RAM usage: tiny=39MB, base=1GB, small=2GB, medium=5GB, large=10GB)...")
         _whisper_model_cache = whisper.load_model(model_size)
         _whisper_model_cache._model_size = model_size
-        logger.info(f"Whisper model '{model_size}' loaded and cached")
+        logger.info(f"Whisper model '{model_size}' loaded and cached successfully")
     return _whisper_model_cache
 
 @app.get("/api/health")
@@ -578,11 +581,11 @@ async def transcribe_uploaded_video_task(task_id: str, video_path: str, video_id
                 raise Exception(f"{error_msg} {suggestion}")
             raise
         
-        # Step 2: Load Whisper model (prefer tiny/base for low-RAM)
+        # Step 2: Load Whisper model (auto-detects free tier and uses appropriate model)
         tasks[task_id] = {"status": TaskStatus.TRANSCRIBING, "progress": 10, "segments": []}
-        logger.info("Loading Whisper model (base for balance)...")
-        model = get_whisper_model("base")  # Use base model (can be changed to "tiny" for even lower RAM)
-        logger.info("Whisper model loaded")
+        logger.info(f"Loading Whisper model '{WHISPER_MODEL_SIZE}' (configured via WHISPER_MODEL_SIZE env var or auto-detected)...")
+        model = get_whisper_model()  # Uses WHISPER_MODEL_SIZE from config (auto-detects free tier -> "tiny")
+        logger.info(f"Whisper model '{WHISPER_MODEL_SIZE}' loaded successfully")
         
         # Step 3: Process video in 20-second chunks (for low-resource servers)
         CHUNK_DURATION = 20.0  # 20 seconds per chunk (≤20s as required)
@@ -845,11 +848,16 @@ CRITICAL:
     except Exception as e:
         import traceback
         error_details = traceback.format_exc()
-        logger.error(f"Transcription task error for {task_id}: {e}")
-        logger.error(f"Full traceback: {error_details}")
+        error_type_name = type(e).__name__
+        error_message = str(e)
+        
+        # Enhanced error logging with more context
+        logger.error(f"❌ Transcription task FAILED for {task_id} (video_id: {video_id}, filename: {filename})")
+        logger.error(f"   Error Type: {error_type_name}")
+        logger.error(f"   Error Message: {error_message}")
+        logger.error(f"   Full traceback:\n{error_details}")
         
         # Determine error type and provide clear message (502 Bad Gateway for backend errors)
-        error_message = str(e)
         error_type = "processing"
         
         if "ffmpeg" in error_message.lower() or "ffprobe" in error_message.lower():
@@ -861,17 +869,30 @@ CRITICAL:
         elif "format" in error_message.lower() or "codec" in error_message.lower():
             error_type = "format"
             suggestion = "Video format may be unsupported. Try converting to MP4 with H.264 codec."
-        elif "memory" in error_message.lower() or "ram" in error_message.lower():
+        elif "memory" in error_message.lower() or "ram" in error_message.lower() or "killed" in error_message.lower() or "oom" in error_message.lower():
             error_type = "resources"
-            suggestion = "Server resources insufficient. Try a shorter or lower quality video."
+            suggestion = f"Server ran out of memory (Render free tier limit: 512MB). Using Whisper '{WHISPER_MODEL_SIZE}' model. Try: 1) Upload shorter video (<2 min), 2) Upgrade to Render Standard plan (2GB RAM) for better performance, or 3) Set WHISPER_MODEL_SIZE=tiny environment variable."
+        elif "whisper" in error_message.lower() or "model" in error_message.lower():
+            error_type = "model_loading"
+            suggestion = f"Failed to load Whisper model '{WHISPER_MODEL_SIZE}'. On Render free tier, try setting WHISPER_MODEL_SIZE=tiny environment variable."
+        elif "openai" in error_message.lower() or "api" in error_message.lower():
+            error_type = "api_error"
+            suggestion = "External API error occurred. Please try again later."
+        elif "timeout" in error_message.lower():
+            error_type = "timeout"
+            suggestion = "Request timed out. Render free tier has 90-second timeout. Try: 1) Upload shorter video, 2) Upgrade to paid plan for longer timeouts, or 3) Check Render logs for details."
         else:
-            suggestion = "Backend processing failed. Please try again or contact support."
+            suggestion = f"Backend processing failed ({error_type_name}). On Render free tier, this may be due to resource limits. Check Render logs or upgrade to Standard plan."
+        
+        # Create user-friendly error message (truncate if too long)
+        user_error_message = error_message[:200] + "..." if len(error_message) > 200 else error_message
         
         tasks[task_id] = {
             "status": TaskStatus.FAILED,
-            "error": error_message,
+            "error": user_error_message,
             "error_type": error_type,
             "error_suggestion": suggestion,
+            "error_details": error_message,  # Keep full error for debugging
             "progress": 0
         }
     finally:
@@ -1179,19 +1200,29 @@ async def transcribe_local_video(
         # Unexpected errors - clean up and return 502
         import traceback
         error_details = traceback.format_exc()
-        logger.error(f"Unexpected error in video upload: {e}")
-        logger.error(f"Full traceback: {error_details}")
+        error_type_name = type(e).__name__
+        error_message = str(e)
+        
+        logger.error(f"❌ Unexpected error in video upload endpoint")
+        logger.error(f"   User: {user.get('username', 'unknown') if user else 'unknown'}")
+        logger.error(f"   File: {original_filename if 'original_filename' in locals() else 'unknown'}")
+        logger.error(f"   Error Type: {error_type_name}")
+        logger.error(f"   Error Message: {error_message}")
+        logger.error(f"   Full traceback:\n{error_details}")
         
         # Clean up video file on error
         try:
-            if os.path.exists(video_path):
+            if 'video_path' in locals() and os.path.exists(video_path):
                 os.unlink(video_path)
-        except:
-            pass
+                logger.info(f"   Cleaned up video file: {video_path}")
+        except Exception as cleanup_err:
+            logger.warning(f"   Failed to clean up video file: {cleanup_err}")
         
+        # Provide more helpful error message
+        user_friendly_error = error_message[:150] + "..." if len(error_message) > 150 else error_message
         raise HTTPException(
             status_code=502,
-            detail=f"Backend processing error: {str(e)}"
+            detail=f"Backend processing error ({error_type_name}): {user_friendly_error}"
         )
 
 

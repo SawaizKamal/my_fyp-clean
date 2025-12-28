@@ -36,3 +36,18 @@ ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 if os.getenv("ENVIRONMENT") == "production" and "*" in ALLOWED_ORIGINS:
     import warnings
     warnings.warn("CORS allows all origins in production. Set ALLOWED_ORIGINS environment variable!")
+
+# Whisper model size configuration
+# Options: "tiny" (~39MB RAM), "base" (~1GB RAM), "small" (~2GB RAM), "medium" (~5GB RAM), "large" (~10GB RAM)
+# Default: "tiny" for compatibility with Render free tier (512MB RAM limit)
+# For Render free/starter tier (512MB RAM): use "tiny" (default)
+# For Render standard (2GB RAM): use "base" (set WHISPER_MODEL_SIZE=base in environment)
+# For Render standard-plus (4GB+ RAM): use "small" or "medium"
+WHISPER_MODEL_SIZE = os.getenv("WHISPER_MODEL_SIZE", "tiny")  # Default to "tiny" for free tier compatibility
+
+# Auto-detect free tier if RENDER_SERVICE_PLAN is set (optional)
+RENDER_PLAN = os.getenv("RENDER_SERVICE_PLAN", "").lower()
+if RENDER_PLAN in ["free", "starter"] and WHISPER_MODEL_SIZE != "tiny":
+    WHISPER_MODEL_SIZE = "tiny"
+    import warnings
+    warnings.warn(f"Render {RENDER_PLAN} tier detected. Using Whisper 'tiny' model for compatibility (512MB RAM limit). Override with WHISPER_MODEL_SIZE env var if needed.")
